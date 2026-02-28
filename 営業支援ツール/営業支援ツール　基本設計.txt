@@ -1,0 +1,491 @@
+--
+
+## 基本設計書 v1.0（営業支援ツール：企業別メモ管理 MVP）
+
+### 0. 前提（固定）
+
+* 実装：Google Apps Script（GAS）＋ Googleスプレッドシート
+* 利用者：単独ユーザー（認証なし、URL知ってる人だけアクセス）
+* TZ：Asia/Tokyo 固定、**日付判定はGASサーバー基準**
+* データ：2シート（Companies / Actions）
+* CompaniesはWeb編集なし（シート直）
+* **列不足・列名不一致はエラー停止（自動修正しない）**
+* 論理削除のみ（復元なし、物理削除なし）
+
+---
+
+## 1. アーキテクチャ構成
+
+### 1.1 クライアント
+
+* HtmlService（単一Web画面）
+* 上：新規登録フォーム（常設）
+* 下：一覧テーブル（全件、ページングなし）
+* モーダル：メモ表示＋編集
+
+### 1.2 サーバ（GAS）
+
+* Code.gs：API（CRUD、参照、検証、列名検査）
+* Html：画面（index.html 1枚でOK）
+
+### 1.3 データ層
+
+* 対象スプレッドシート（このツール専用）
+
+  * Companies
+  * Actions
+* 外部参照スプレッドシート（スタッフ候補用）
+
+  * ID：`1X0sdAY32MFk98mwqwPMFOpdI5-2KSfjSU71NBDOoyUo`
+  * シート名：`決定`
+  * E列=企業名 / C列=スタッフ名
+
+---
+
+## 2. データモデル（内部表現）
+
+### 2.1 Company（Companies行）
+
+* company_id: string
+* company_name: string（必須・ユニーク）
+* contact_contract_billing: string（複数行）
+* contact_sales_trouble: string（複数行）
+* memo_company: string
+
+### 2.2 Action（Actions行）
+
+* action_id: string
+* created_at: string（自動）
+* updated_at: string（自動）
+* due_date: string（yyyy-MM-dd想定、日付のみ）
+* company_name: string（Companies参照）
+* staff_name: string（任意）
+* category: string（3択）
+* status: string（3択、初期=未対応）
+* note: string（必須）
+* completed_at: string（完了時自動／未完了に戻すとクリア）
+* is_deleted: boolean
+* deleted_at: string
+
+---
+
+## 3. 画面仕様（UI）
+
+### 3.1 新規登録フォーム（常設・上部）
+
+項目順（固定）
+
+1. 企業名（プルダウン：Companies.company_name）
+2. スタッフ名（候補表示＋自由入力）
+3. カテゴリ（3択）
+4. 期限日（必須）
+5. 状態（3択、初期=未対応）
+6. メモ（必須）
+
+登録成功後
+
+* 全項目クリア
+
+### 3.2 一覧テーブル（下部）
+
+表示列（固定）
+
+* 企業名 / スタッフ名 / 期限日 / 状態 / カテゴリ / メモ（省略）
+
+並び順（固定）
+
+1. due_date 昇順
+2. created_at 昇順
+
+表示対象（固定）
+
+* is_deleted=true は**表示しない**
+
+### 3.3 メモ（note）表示・編集
+
+* 一覧は省略表示
+* クリックでモーダル表示
+* モーダル内で編集可能（更新時 updated_at 更新）
+
+### 3.4 視覚ルール（固定）
+
+* 期限切れ：due_date < 今日 AND status≠完了 → 赤文字
+* 今日期限：due_date = 今日 AND status≠完了 → 別色強調（例：オレンジ）
+* 完了：薄く表示
+* 論理削除：非表示
+
+### 3.5 窓口表示（参照のみ・編集不可）
+
+* category=契約・請求 → contact_contract_billing 表示
+* category=営業・トラブル → contact_sales_trouble 表示
+* category=その他 → 両方表示
+
+---
+
+4. サーバー関数設計（GAS関数）
+4.1 方針
+
+画面（HtmlService）から google.script.run で GAS関数を直接呼び出す
+
+外部API・REST・エンドポイント等は作らない
+
+Companies はWeb編集しないため、Companies更新系の関数は持たない
+
+Actions の CRUD と外部参照（スタッフ候補）だけを提供する
+
+列名不一致・列不足は 例外 throw で停止（自動修正しない）
+
+4.2 GAS公開関数（フロントから呼ぶ）
+doGet(e)
+
+役割：Web画面（HTML）を返す
+
+入力：e（未使用）
+
+出力：HtmlOutput
+
+initPage()
+
+役割：初期表示に必要なデータ一式を返す
+
+返却内容（例）
+
+Companies の company_name 一覧（プルダウン用）
+
+category 固定3種
+
+status 固定3種（初期値は未対応）
+
+前処理：assertSheetsAndColumns() を実行し、NGなら停止
+
+listActions()
+
+役割：Actions一覧を取得して返す
+
+条件：
+
+is_deleted=true は除外（UI非表示のため）
+
+並び順は固定：due_date 昇順 → created_at 昇順
+
+前処理：assertSheetsAndColumns() を実行し、NGなら停止
+
+createAction(payload)
+
+役割：新規Actionを1件追加する
+
+入力：payload
+
+company_name
+
+staff_name（任意）
+
+category（固定3種のいずれか）
+
+due_date（必須・日付のみ）
+
+status（固定3種。未指定の場合は未対応）
+
+note（必須）
+
+自動セット：
+
+action_id（採番）
+
+created_at（現在時刻）
+
+updated_at（現在時刻）
+
+completed_at（status=完了ならセット、それ以外は空）
+
+is_deleted=false
+
+deleted_at 空
+
+バリデーション：
+
+due_date 必須
+
+note 必須
+
+category/status は固定値以外はエラー
+
+前処理：assertSheetsAndColumns() を実行し、NGなら停止
+
+出力：作成後の listActions() と同等の一覧（UI更新用）
+
+updateAction(actionId, patch)
+
+役割：既存Actionを編集する（モーダル編集含む）
+
+入力：
+
+actionId（必須）
+
+patch（更新したい項目のみ）
+
+company_name / staff_name / category / due_date / status / note
+
+更新ルール：
+
+updated_at は必ず現在時刻で更新
+
+status が「完了」になった場合：completed_at を現在時刻でセット
+
+status が「未対応」または「対応中」に戻った場合：completed_at をクリア
+
+バリデーション：
+
+due_date を更新する場合は空禁止
+
+note を更新する場合は空禁止
+
+category/status は固定値以外はエラー
+
+前処理：assertSheetsAndColumns() を実行し、NGなら停止
+
+出力：更新後の listActions() と同等の一覧（UI更新用）
+
+deleteAction(actionId)
+
+役割：UI上の削除（論理削除のみ）
+
+入力：actionId（必須）
+
+更新内容：
+
+is_deleted=true
+
+deleted_at=現在時刻
+
+updated_at=現在時刻
+
+注意：
+
+物理削除しない
+
+復元機能なし
+
+前処理：assertSheetsAndColumns() を実行し、NGなら停止
+
+出力：削除後の listActions() と同等の一覧（UI更新用）
+
+getStaffCandidates(companyName)
+
+役割：外部スプレッドシートからスタッフ候補一覧を返す
+
+入力：companyName（Companiesで選択された企業名）
+
+参照元：
+
+スプレッドシートID：1X0sdAY32MFk98mwqwPMFOpdI5-2KSfjSU71NBDOoyUo
+
+シート名：「決定」
+
+E列=企業名、C列=スタッフ名
+
+ロジック：
+
+E列が companyName と一致する行の C列を収集
+
+重複除外
+
+空欄は除外（候補として意味がないため）
+
+例外時：
+
+参照失敗しても エラーにせず空配列を返して続行
+
+出力：string[]（候補配列）
+
+4.3 非公開内部関数（サーバ内で使用）
+
+assertSheetsAndColumns()
+
+Companies/Actions のヘッダ列名が要件通りか検証
+
+不一致・不足があれば throw（停止）
+
+loadCompanies()
+
+findActionRow(actionId)
+
+normalizeDate(value)（日付のみ正規化）
+
+nowJst()（Asia/Tokyo基準の現在時刻文字列化）
+
+generateActionId()
+
+---
+
+## 5. 固定処理順序（サーバ側）
+
+### 5.1 起動時（画面ロード）
+
+1. `assertSheetsAndColumns()`（Companies/Actionsの列名検査、NGならthrow停止）
+2. `loadCompanies()`（company_name一覧）
+3. `listActions()`（並び順適用済で返す）
+
+### 5.2 新規作成
+
+1. `assertSheetsAndColumns()`
+2. `validateCreate(payload)`（due_date, note 必須）
+3. `normalizePayload(payload)`（status初期値、category/statusの値検査）
+4. `insertActionRow()`（created_at/updated_at/action_id採番）
+5. `listActions()` 再取得して返す（UI更新用）
+
+### 5.3 更新（モーダル編集など）
+
+1. `assertSheetsAndColumns()`
+2. `findActionRow(actionId)`（見つからなければエラー）
+3. `applyPatch()`（status遷移に応じて completed_at 制御）
+4. `set updated_at`
+5. `listActions()` 再取得して返す
+
+### 5.4 削除（論理削除）
+
+1. `assertSheetsAndColumns()`
+2. `findActionRow(actionId)`
+3. `is_deleted=true / deleted_at=now / updated_at=now`
+4. `listActions()` 再取得して返す
+
+---
+
+## 6. 列名検査（超重要・停止要件）
+
+### 6.1 方針（固定）
+
+* Companies / Actions のヘッダ行から列名を取得
+* 必須列が1つでも無い or 列名が一致しない → **throwして停止**
+* 自動修復・列追加・並び替えはしない（要件通り）
+
+---
+
+## 7. 外部参照（スタッフ候補）
+
+### 7.1 動作（固定）
+
+* company_name選択時に `api_getStaffCandidates(companyName)` を呼ぶ
+* 外部シート「決定」の E列（企業名）一致行の C列（スタッフ名）を集める
+* 重複除外
+* 参照失敗（権限/ID/シートなし等）は **エラーにせず空候補で続行**
+
+---
+
+## 8. 採番・日時
+
+* action_id：ユニーク（例：`A_yyyyMMdd_HHmmss_XXXX`）
+* created_at / updated_at / deleted_at / completed_at：ISO文字列（TZ=Asia/Tokyo）
+* 今日判定：GASサーバー日付で `yyyy-MM-dd` に正規化して比較
+基本設計 追記（確定仕様）
+
+8. 採番・日時（追記）
+
+due_date
+
+スプレッドシート上は「日付型（Date）」で保存する
+
+表示形式は yyyy/MM/dd に固定
+
+UI（カレンダー）入力は文字列で受けても、保存時に Date へ変換して書き込む
+
+6. 視覚ルール（日付判定の前提を明確化）
+
+due_date は日付型のため、比較は「日付（00:00:00）同士」で行う
+
+今日判定は GASサーバー基準（Asia/Tokyo） の日付を使用
+
+---
+
+## 9. エラー設計
+
+* 列名不一致/不足：throw（画面に「シート構造エラー」表示）
+* 入力必須違反：ユーザー向けメッセージで返す（due_date / note）
+* 外部参照失敗：握りつぶして候補なし（要件通り）
+
+---
+
+## 10. 受入条件（この基本設計の対応表）
+
+* 期限必須チェック：validateCreateで実装
+* 外部スタッフ参照：候補表示＋自由入力＋失敗時続行
+* 視覚ルール：クライアント側で「今日」を基準に判定しクラス付与
+* 削除は論理のみ：is_deleted / deleted_at
+* 列名不一致でエラー停止：assertSheetsAndColumnsで停止
+
+---
+状態遷移仕様（固定）
+
+状態（status）
+
+使用可能な値は以下の3種類のみ。
+
+未対応（初期値）
+
+対応中
+
+完了
+
+上記以外の値は許容しない。
+
+許可する状態遷移
+
+以下すべての遷移を許可する（MVPのため制限なし）。
+
+未対応 -> 対応中
+未対応 -> 完了
+対応中 -> 完了
+完了 -> 未対応
+完了 -> 対応中
+対応中 -> 未対応
+
+completed_at の制御
+
+status が「完了」になった瞬間
+
+completed_at に現在日時（Asia/Tokyo）をセットする
+
+updated_at に現在日時をセットする
+
+status が「未対応」または「対応中」に戻った瞬間
+
+completed_at を空にする
+
+updated_at に現在日時をセットする
+
+status が変更されない更新の場合
+
+completed_at は変更しない
+
+updated_at のみ現在日時に更新する
+
+completed_at はUIから直接編集できない。
+
+期限表示判定の優先順位（固定）
+
+判定は必ず以下の順序で行う。
+
+is_deleted = true の場合
+UIに表示しない
+
+status = 完了 の場合
+薄表示とする
+期限切れや今日期限の色は適用しない
+
+due_date < 今日 かつ status != 完了 の場合
+期限切れとして赤表示
+
+due_date = 今日 かつ status != 完了 の場合
+今日期限としてオレンジ表示
+
+上記以外
+通常表示
+
+論理削除との関係
+
+is_deleted = true のレコードはUIに表示しない
+
+削除済みレコードを更新するUI導線は存在しない
+
+削除済みレコードに対して状態遷移は行わない
+

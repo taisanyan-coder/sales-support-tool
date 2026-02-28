@@ -1,0 +1,2004 @@
+assertSheetsAndColumns_ 詳細設計（MVP）
+
+■ 目的
+スプレッドシートの構造が正しいかを検証する。
+必須シートおよび必須カラムが存在しない場合は即エラー終了。
+自動修正・自動追加は行わない。
+将来の列追加や列順変更があっても壊れないようにするため、列名で存在確認を行う。
+
+■ 関数仕様
+
+関数名：
+assertSheetsAndColumns_()
+
+戻り値：
+なし（void）
+
+呼び出しタイミング：
+以下の処理の冒頭で必ず実行する
+
+・initPage()
+・listActions()
+・createAction()
+・updateAction()
+・deleteAction()
+
+■ 前提
+
+・APP_SPREADSHEET_ID という定数が存在する
+・ヘッダー行は必ず1行目
+・カラム順序は不問（名前一致で判定）
+・カラム名は完全一致（trim後に比較）
+・大文字小文字は区別する
+・未知カラム（必須以外の列）が存在しても許容する（無視して続行）
+・ただしヘッダーの重複は許容しない（データ参照が壊れるため）
+
+■ 必須シート
+
+Companies
+
+Actions
+
+どちらかが存在しない場合は即エラー
+
+■ 必須カラム
+
+【Companies シート】
+
+company_id
+company_name
+contact_contract_billing
+contact_sales_trouble
+memo_company
+
+【Actions シート】
+
+action_id
+created_at
+updated_at
+due_date
+company_name
+staff_name
+category
+status
+note
+completed_at
+is_deleted
+deleted_at
+
+■ エラー方針
+
+以下の場合は throw Error で即停止
+
+シートが存在しない
+
+必須カラムが不足している
+
+必須カラムが重複している（同名ヘッダーが2つ以上）
+
+未知カラム（必須以外の列）は存在してもエラーにしない（許容して無視）
+
+エラーメッセージは開発者向け英語識別子でよい
+
+例：
+SHEET_MISSING: Companies
+COLUMNS_MISSING: Actions: due_date
+DUPLICATE_HEADER: Actions: company_name
+
+■ アルゴリズム
+
+Step1
+SpreadsheetApp.openById(APP_SPREADSHEET_ID) で開く
+
+Step2
+Companies シート取得
+存在しなければエラー
+
+Step3
+Actions シート取得
+存在しなければエラー
+
+Step4
+各シートの1行目を取得
+getRange(1,1,1,lastColumn).getValues()[0]
+
+Step5
+各ヘッダー値を以下の処理で正規化
+
+・String化
+・trim()
+・空文字は除外
+
+Step6
+必須カラム配列を定義
+
+Step7
+不足カラムを抽出
+required にあって header に無いもの
+
+1つでもあればエラー
+
+Step8
+未知カラムの扱い
+header にあって required に無いものは存在してもよい
+必要ならログ出力のみ（エラーにはしない）
+
+Step9
+重複チェック
+
+正規化後headerの同名を検出する
+同名ヘッダーがあればエラー
+（検出した重複カラム名を特定してエラーに含める）
+
+Step10
+問題がなければ正常終了
+
+■ 受入基準
+
+・カラム順が変わってもOK
+・列が増えてもOK（未知カラムは無視して続行）
+・company_name が2つあればエラー
+・Companies シート欠如はエラー
+・必須カラムが1つでも欠けていればエラー
+・dueDate など必須カラム名のタイポがある場合は必須不足としてエラー
+
+
+---
+
+## buildColumnIndexMap_ 詳細設計（MVP）
+
+■ 目的
+シートの1行目ヘッダーから、
+「列名 → 列番号(1始まり)」のマップを生成する。
+
+列順が変更されても壊れないようにするための基盤関数。
+
+---
+
+## ■ 関数仕様
+
+関数名：
+buildColumnIndexMap_(sheet)
+
+引数：
+sheet ・・・ SpreadsheetApp の Sheet オブジェクト
+
+戻り値：
+Object
+
+例：
+{
+company_id: 1,
+company_name: 2,
+memo_company: 5
+}
+
+---
+
+## ■ 前提
+
+・sheet は null ではない
+・1行目がヘッダー行
+・assertSheetsAndColumns_ 実行後に呼ばれる前提
+(必須列不足は既に防がれている)
+
+---
+
+## ■ 処理手順
+
+Step1
+lastColumn = sheet.getLastColumn()
+
+Step2
+headerRow = sheet.getRange(1,1,1,lastColumn).getValues()[0]
+
+Step3
+空のオブジェクト colMap を作成
+
+Step4
+for ループで headerRow を走査
+
+index は 0 始まり
+列番号は index + 1
+
+各セルについて：
+
+1. String化
+2. trim()
+3. 空文字ならスキップ
+
+Step5
+重複チェック
+
+もし colMap に既に同じキーが存在したら
+throw Error("DUPLICATE_HEADER: " + headerName)
+
+Step6
+colMap[headerName] = index + 1
+
+Step7
+return colMap
+
+---
+
+## ■ ポイント
+
+・列順変更に完全対応
+・未知カラムも自動的にマップに含まれる
+(ただし呼び出し側で使用するのは必須列のみ)
+・重複ヘッダーはここでも防御する
+(二重安全)
+
+---
+
+## ■ 受入基準
+
+・列順が変わっても正しい列番号を返す
+・余計な列があっても正常動作
+・同名ヘッダーが2つあればエラー
+・空セルは無視
+
+---
+initPage() 詳細設計（MVP）
+
+目的
+初期表示に必要なデータ一式を返す。
+Companies の company_name 一覧、category/status の固定値、Actions 一覧（論理削除除外・並び順適用済）をまとめて返す。
+
+関数仕様
+関数名:
+initPage()
+
+引数:
+なし
+
+戻り値:
+InitPageResponse（Object）
+
+呼び出しタイミング:
+画面ロード直後（クライアント起動時に1回）
+
+前提
+
+* 前処理として assertSheetsAndColumns_() を必ず実行し、NGなら throw で停止する（自動修正なし）。
+* TZ は Asia/Tokyo 固定。日付判定は GAS サーバー基準。
+* Companies は Web 編集しない（シート直管理）。
+* Actions は論理削除のみ（is_deleted=true は返さない）。
+
+返却データ構造（確定）
+InitPageResponse は以下キーを必ず返す。
+
+{
+companies: string[],
+categories: string[],
+statuses: string[],
+actions: ActionDto[],
+today_ymd: string
+}
+
+companies
+
+* Companies.company_name の一覧
+* 空欄は除外
+* 重複は除外
+* ソート: 昇順（localeCompare 相当の文字列昇順で良い）
+
+categories（固定3種）
+
+* ["契約・請求","営業・トラブル","その他"]
+
+statuses（固定3種）
+
+* ["未対応","対応中","完了"]
+
+actions
+
+* listActions() と同等の一覧（論理削除除外、並び順適用済）
+* ActionDto の配列
+
+today_ymd
+
+* GAS サーバー基準の「今日」を yyyy-MM-dd の文字列で返す
+* クライアント側の期限色分け判定で使用する前提（端末時刻ズレ対策）
+
+ActionDto（返却用の確定スキーマ）
+{
+action_id: string,
+created_at: string,
+updated_at: string,
+due_date: string,
+company_name: string,
+staff_name: string,
+category: string,
+status: string,
+note: string,
+completed_at: string
+}
+
+備考:
+
+* is_deleted, deleted_at は UI 非表示かつ list 返却不要のため返さない。
+* due_date は「表示用」文字列として返す（保存は Date 型でも、返却時は yyyy-MM-dd で統一して良い）。
+
+エラー方針
+
+* シート構造不正は throw Error で即停止（assertSheetsAndColumns_ に委譲）
+* initPage 内で追加の入力バリデーションは不要（引数なしのため）
+* 例外メッセージは開発者向け英語識別子でよい
+
+例:
+
+* SHEET_MISSING: Companies
+* COLUMNS_MISSING: Actions: due_date
+
+アルゴリズム（処理手順）
+Step1
+assertSheetsAndColumns_() を実行
+例外が出たらそのまま throw（ここで停止）
+
+Step2
+SpreadsheetApp.openById(APP_SPREADSHEET_ID) で対象スプレッドシートを開く
+
+Step3
+Companies シートから company_name 一覧を取得
+
+* companiesSheet = ss.getSheetByName("Companies")
+* lastRow = companiesSheet.getLastRow()
+* lastCol = companiesSheet.getLastColumn()
+* ヘッダー行(1行目)から buildColumnIndexMap_(companiesSheet) を作成
+* company_name 列のインデックスを取得
+* 2行目から最終行まで company_name を読み取り
+* String化 -> trim -> 空は除外
+* Set で重複除外
+* 昇順ソート
+* companies 配列を確定
+
+Step4
+Actions 一覧を取得（listActions と同等の結果）
+
+* actions = listActions() をそのまま呼んで良い（推奨）
+  もしくは listActions 相当ロジックを内部関数で呼ぶ
+* 戻り値は ActionDto[] であること
+
+Step5
+固定配列を生成
+
+* categories = ["契約・請求","営業・トラブル","その他"]
+* statuses = ["未対応","対応中","完了"]
+
+Step6
+today_ymd を生成
+
+* GAS サーバーの現在日付を Asia/Tokyo 基準で yyyy-MM-dd に整形して返す
+* 例: Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy-MM-dd")
+
+Step7
+InitPageResponse を組み立てて return
+{
+companies: companies,
+categories: categories,
+statuses: statuses,
+actions: actions,
+today_ymd: today_ymd
+}
+
+受入基準
+
+* Companies の company_name が追加されても initPage は最新一覧を返す
+* Companies に空欄行があっても companies には入らない
+* Actions に is_deleted=true が存在しても actions には含まれない
+* actions の並び順は due_date 昇順 -> created_at 昇順
+* categories/statuses は常に固定3種を返す
+* シート不足/必須列不足/列名不一致は initPage 開始時点でエラー停止する
+
+
+---
+
+営業支援ツール 詳細設計
+対象: listActions 以降
+形式: AI実装丸投げ前提
+-------------
+
+============================================================
+
+1. listActions
+   ============================================================
+
+目的
+Actionsシートから未削除データのみ取得し、規定順で返却する。
+
+関数名
+listActions
+
+引数
+なし
+
+戻り値
+ActionDto配列
+
+前提
+
+1. 先頭でassertSheetsAndColumns_を必ず実行する
+2. TZはAsia/Tokyo固定
+3. 列参照は列番号固定禁止。必ず列名マッピング経由
+4. is_deletedがtrueの行は返却対象外
+
+取得対象列
+action_id
+created_at
+updated_at
+company_name
+staff_name
+category
+due_date
+status
+note
+completed_at
+
+返却除外列
+is_deleted
+deleted_at
+
+処理手順
+Step1 assertSheetsAndColumns_実行
+Step2 SpreadsheetApp.openByIdでブック取得
+Step3 Actionsシート取得
+Step4 buildColumnIndexMap_で列マップ生成
+Step5 lastRow取得
+Step6 lastRowが1以下なら空配列返却
+Step7 2行目から最終行までgetValuesで取得
+Step8 is_deletedがtrueの行を除外
+Step9 due_dateをyyyy-MM-dd文字列へ変換
+Step10 due_date昇順、created_at昇順でソート
+Step11 ActionDto配列返却
+
+ソート仕様
+primary key due_date 昇順
+secondary key created_at 昇順
+
+============================================================
+2. createAction
+===============
+
+目的
+Action新規追加後、更新済み一覧を返却する。
+
+関数名
+createAction
+
+引数
+payloadオブジェクト
+
+必須項目
+company_name
+category
+due_date
+note
+
+任意項目
+staff_name
+status
+
+固定カテゴリ
+contract_billing
+sales_trouble
+other
+
+固定ステータス
+not_started
+in_progress
+done
+
+自動設定
+action_id ユニーク採番
+created_at 現在時刻ISO
+updated_at 現在時刻ISO
+completed_at statusがdoneの場合のみ現在時刻
+is_deleted false
+deleted_at 空
+
+バリデーション
+1 due_date空禁止
+2 note空禁止
+3 category固定値以外禁止
+4 status固定値以外禁止
+
+処理手順
+Step1 assertSheetsAndColumns_
+Step2 validateCreate_
+Step3 normalizePayloadForCreate_
+Step4 Actionsシート取得
+Step5 新規行配列生成
+Step6 due_dateはDate型で保存
+Step7 appendRow
+Step8 listActions呼び出し結果返却
+
+============================================================
+3. updateAction
+===============
+
+目的
+既存Action部分更新後、更新済み一覧返却。
+
+関数名
+updateAction
+
+引数
+actionId
+patchオブジェクト
+
+更新可能項目
+company_name
+staff_name
+category
+due_date
+status
+note
+
+更新不可
+completed_at
+is_deleted
+deleted_at
+
+更新ルール
+1 updated_atは必ず現在時刻へ更新
+2 statusがdoneに変更された瞬間 completed_atへ現在時刻設定
+3 statusがnot_startedまたはin_progressへ変更された場合 completed_atを空にする
+4 status変更なしの場合 completed_atは変更しない
+
+バリデーション
+1 actionId必須
+2 patch空禁止
+3 due_date更新時空禁止
+4 note更新時空禁止
+5 category固定値以外禁止
+6 status固定値以外禁止
+
+処理手順
+Step1 assertSheetsAndColumns_
+Step2 validateUpdate_
+Step3 Actionsシート取得
+Step4 actionIdで行検索
+Step5 見つからなければエラー
+Step6 現行値取得
+Step7 patch適用
+Step8 status遷移判定しcompleted_at制御
+Step9 updated_at更新
+Step10 行全体上書き
+Step11 listActions結果返却
+
+============================================================
+4. deleteAction
+===============
+
+目的
+論理削除を行い一覧返却。物理削除は禁止。
+
+関数名
+deleteAction
+
+引数
+actionId
+
+更新内容
+is_deleted true
+deleted_at 現在時刻ISO
+updated_at 現在時刻ISO
+
+処理手順
+Step1 assertSheetsAndColumns_
+Step2 Actionsシート取得
+Step3 actionIdで行検索
+Step4 見つからなければエラー
+Step5 is_deleted trueへ更新
+Step6 deleted_at更新
+Step7 updated_at更新
+Step8 行上書き
+Step9 listActions返却
+
+============================================================
+共通エラー仕様
+=======
+
+ACTION_NOT_FOUND actionId
+VALIDATION_ERROR message
+SHEET_STRUCTURE_ERROR message
+
+例外はthrowで停止。
+自動補正は禁止。
+
+---
+
+============================================================
+0. buildColumnIndexMap_
+============================================================
+
+目的
+1行目ヘッダーから "列名" をキーにして "列番号(1始まり)" を返すマップを作る。
+列順変更に耐えるための共通基盤。
+
+関数名
+buildColumnIndexMap_(sheet)
+
+引数
+sheet: SpreadsheetApp.Sheet
+
+戻り値
+Object
+例
+{
+company_id: 1,
+company_name: 2,
+memo_company: 5
+}
+
+前提
+1 sheetはnullではない
+2 1行目がヘッダー行
+3 assertSheetsAndColumns_実行後に呼ばれる想定
+
+処理手順
+Step1 lastColumn = sheet.getLastColumn()
+Step2 headerRow = sheet.getRange(1,1,1,lastColumn).getValues()[0]
+Step3 colMap = {} を作る
+Step4 headerRowを左から順に走査する
+Step5 headerName = String(cell).trim()
+Step6 headerNameが空ならスキップ
+Step7 colMapに同名が既にあれば throw Error("DUPLICATE_HEADER: " + headerName)
+Step8 colMap[headerName] = (index + 1)
+Step9 colMapをreturn
+
+受入基準
+1 列順が変わっても正しい列番号を返す
+2 余計な列があっても正常動作
+3 同名ヘッダーがあれば必ずエラー
+4 空セルヘッダーは無視
+
+
+============================================================
+1. initPage
+============================================================
+
+目的
+初期表示に必要なデータ一式を返す。
+Companiesのcompany_name一覧
+categoryとstatusの固定値
+Actions一覧(論理削除除外, 並び順適用)
+今日の日付(today_ymd)
+
+関数名
+initPage
+
+引数
+なし
+
+戻り値
+InitPageResponse
+
+InitPageResponseスキーマ
+{
+companies: string[],
+categories: string[],
+statuses: string[],
+actions: ActionDto[],
+today_ymd: string
+}
+
+ActionDtoスキーマ
+{
+action_id: string,
+created_at: string,
+updated_at: string,
+due_date: string,
+company_name: string,
+staff_name: string,
+category: string,
+status: string,
+note: string,
+completed_at: string
+}
+
+前提
+1 先頭でassertSheetsAndColumns_を必ず実行しNGならthrowで停止する
+2 TZはAsia/Tokyo固定
+3 CompaniesはWeb編集しない(シート直管理)
+4 Actionsは論理削除のみ(is_deleted=trueは返さない)
+
+companies仕様
+1 Companies.company_nameの一覧
+2 空欄は除外
+3 重複は除外
+4 昇順ソート
+
+categories固定値
+["契約・請求","営業・トラブル","その他"]
+
+statuses固定値
+["未対応","対応中","完了"]
+
+actions仕様
+listActions()と同等の結果(論理削除除外, 並び順適用済)
+
+today_ymd仕様
+GASサーバー基準の今日をyyyy-MM-ddで返す
+Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy-MM-dd")
+
+エラー方針
+1 シート構造不正はassertSheetsAndColumns_に委譲しthrowで停止
+2 initPage内の追加バリデーションは不要
+
+処理手順
+Step1 assertSheetsAndColumns_実行
+Step2 ss = SpreadsheetApp.openById(APP_SPREADSHEET_ID)
+Step3 Companiesからcompany_name一覧を作る
+  Step3-1 companiesSheet = ss.getSheetByName("Companies")
+  Step3-2 colMap = buildColumnIndexMap_(companiesSheet)
+  Step3-3 nameCol = colMap["company_name"]
+  Step3-4 lastRow = companiesSheet.getLastRow()
+  Step3-5 lastRow <= 1なら companies = [] とする
+  Step3-6 2行目から最終行までnameColのみ読み取る
+  Step3-7 String化してtrimし空を除外する
+  Step3-8 重複除外して昇順ソートする
+Step4 actions = listActions()
+Step5 categories固定配列を作る
+Step6 statuses固定配列を作る
+Step7 today_ymdを生成する
+Step8 returnする
+{
+companies: companies,
+categories: categories,
+statuses: statuses,
+actions: actions,
+today_ymd: today_ymd
+}
+
+受入基準
+1 Companiesに追加があればcompaniesに反映される
+2 Companiesに空欄行があってもcompaniesに入らない
+3 Actionsにis_deleted=trueがあってもactionsに含まれない
+4 actionsの並び順はdue_date昇順 then created_at昇順
+5 categoriesとstatusesは常に固定3種
+6 シート不足や必須列不足は開始時点でエラー停止
+
+============================================================
+営業支援ツール 詳細設計（MVP） 続き：listActions() から
+============================================================
+
+------------------------------------------------------------
+listActions() 詳細設計（MVP）
+------------------------------------------------------------
+目的
+Actions 一覧を取得して返す。
+論理削除（is_deleted=true）は除外する。
+並び順は固定：due_date 昇順 → created_at 昇順。
+
+関数仕様
+関数名:
+listActions()
+
+引数:
+なし
+
+戻り値:
+ActionDto[]（配列）
+
+ActionDto（返却スキーマ確定）
+{
+  action_id: string,
+  created_at: string,
+  updated_at: string,
+  due_date: string,        // yyyy-MM-dd
+  company_name: string,
+  staff_name: string,
+  category: string,
+  status: string,
+  note: string,
+  completed_at: string
+}
+
+前提
+- 先頭で assertSheetsAndColumns_() を必ず実行（NGなら throw）
+- APP_SPREADSHEET_ID 定数が存在
+- TZ は Asia/Tokyo 固定
+- Actions のヘッダー行は 1 行目
+- due_date はシート上は Date 型保存でもよいが、返却は yyyy-MM-dd の文字列に統一
+- is_deleted, deleted_at は返却しない（UI非表示のため）
+
+エラー方針
+- シート構造不正は assertSheetsAndColumns_ で throw
+- 内部例外はそのまま throw（開発者向け識別子でよい）
+
+アルゴリズム（処理手順）
+Step1
+assertSheetsAndColumns_() 実行
+
+Step2
+ss = SpreadsheetApp.openById(APP_SPREADSHEET_ID)
+
+Step3
+actionsSheet = ss.getSheetByName("Actions")
+
+Step4
+col = buildColumnIndexMap_(actionsSheet)
+
+Step5
+lastRow = actionsSheet.getLastRow()
+if lastRow <= 1 then return []
+
+Step6
+values = actionsSheet.getRange(2, 1, lastRow-1, actionsSheet.getLastColumn()).getValues()
+
+Step7
+rows = []
+FOR each rowVals in values
+  isDeleted = rowVals[col["is_deleted"]-1]
+  IF isDeleted === true THEN continue
+
+  dto = {
+    action_id: String(rowVals[col["action_id"]-1] || "").trim(),
+    created_at: String(rowVals[col["created_at"]-1] || "").trim(),
+    updated_at: String(rowVals[col["updated_at"]-1] || "").trim(),
+    due_date: normalizeDate_(rowVals[col["due_date"]-1]),          // yyyy-MM-dd
+    company_name: String(rowVals[col["company_name"]-1] || "").trim(),
+    staff_name: String(rowVals[col["staff_name"]-1] || "").trim(),
+    category: String(rowVals[col["category"]-1] || "").trim(),
+    status: String(rowVals[col["status"]-1] || "").trim(),
+    note: String(rowVals[col["note"]-1] || "").trim(),
+    completed_at: String(rowVals[col["completed_at"]-1] || "").trim()
+  }
+  rows.push(dto)
+END FOR
+
+Step8
+ソート（固定）
+- primary: due_date 昇順（文字列 yyyy-MM-dd の昇順で良い）
+- secondary: created_at 昇順（ISO文字列想定、文字列昇順で良い）
+rows.sort(compareFn)
+
+Step9
+return rows
+
+受入基準
+- is_deleted=true が混在しても返却に含めない
+- due_date が Date/文字列どちらでも normalizeDate_ で yyyy-MM-dd に揃う
+- 並び順が due_date → created_at で安定する
+- is_deleted/deleted_at は返さない
+
+
+------------------------------------------------------------
+createAction(payload) 詳細設計（MVP）
+------------------------------------------------------------
+目的
+新規 Action を 1 件追加し、更新後の一覧（listActions同等）を返す。
+
+関数仕様
+関数名:
+createAction(payload)
+
+引数:
+payload（Object）
+{
+  company_name: string,
+  staff_name: string,   // 任意
+  category: string,     // 固定3択
+  due_date: string,     // 必須（UIから文字列想定）
+  status: string,       // 固定3択（未指定なら未対応）
+  note: string          // 必須
+}
+
+戻り値:
+ActionDto[]（listActions() と同等）
+
+前提
+- 先頭で assertSheetsAndColumns_() を必ず実行（NGなら throw）
+- category 固定値: ["契約・請求","営業・トラブル","その他"]
+- status 固定値: ["未対応","対応中","完了"]
+- due_date はシート保存時は Date 型にしてよい（表示形式は yyyy/MM/dd 固定運用）
+- created_at/updated_at/completed_at/deleted_at はサーバ側で自動
+
+エラー方針
+- 必須違反はユーザー向け日本語メッセージで throw（要件に合わせる）
+  - due_date 必須
+  - note 必須
+- category/status が固定値以外は throw（開発者向け識別子でも可）
+
+アルゴリズム（処理手順）
+Step1
+assertSheetsAndColumns_()
+
+Step2
+validateCreate_(payload)
+- if !payload.due_date then throw Error("期限日（due_date）は必須です。")
+- if !payload.note then throw Error("メモ（note）は必須です。")
+
+Step3
+normalizeCreatePayload_(payload)
+- companyName = String(payload.company_name || "").trim()
+- staffName   = String(payload.staff_name || "").trim()
+- category    = String(payload.category || "").trim()
+- status      = String(payload.status || "").trim()
+  if status=="" then status="未対応"
+- note        = String(payload.note || "").trim()
+- dueDateStr  = String(payload.due_date || "").trim()
+- category/status の値チェック（固定値以外は throw）
+- dueDateDate = normalizeDateToDate_(dueDateStr)  // Date オブジェクトに変換（00:00:00想定）
+
+Step4
+nowStr = nowJst_()  // ISO文字列（Asia/Tokyo）
+actionId = generateActionId_()
+
+Step5
+completedAt = ""
+IF status == "完了" THEN completedAt = nowStr
+
+Step6
+ss = SpreadsheetApp.openById(APP_SPREADSHEET_ID)
+sheet = ss.getSheetByName("Actions")
+col = buildColumnIndexMap_(sheet)
+
+Step7
+appendRowValues をヘッダ順に「列番号で」組み立てる
+- rowArray = new Array(sheet.getLastColumn()).fill("")
+- rowArray[col["action_id"]-1]  = actionId
+- rowArray[col["created_at"]-1] = nowStr
+- rowArray[col["updated_at"]-1] = nowStr
+- rowArray[col["due_date"]-1]   = dueDateDate        // Date を書き込む
+- rowArray[col["company_name"]-1] = companyName
+- rowArray[col["staff_name"]-1]   = staffName
+- rowArray[col["category"]-1]     = category
+- rowArray[col["status"]-1]       = status
+- rowArray[col["note"]-1]         = note
+- rowArray[col["completed_at"]-1] = completedAt
+- rowArray[col["is_deleted"]-1]   = false
+- rowArray[col["deleted_at"]-1]   = ""
+
+Step8
+sheet.appendRow(rowArray)
+
+Step9
+return listActions()
+
+受入基準
+- status 未指定なら未対応になる
+- status=完了なら completed_at が入る、それ以外は空
+- is_deleted は false、deleted_at は空
+- 追加後に listActions と同等の並び順で返る
+
+
+------------------------------------------------------------
+updateAction(actionId, patch) 詳細設計（MVP）
+------------------------------------------------------------
+目的
+既存 Action を部分更新し、更新後の一覧（listActions同等）を返す。
+status 遷移に応じて completed_at を制御する。
+
+関数仕様
+関数名:
+updateAction(actionId, patch)
+
+引数:
+actionId: string（必須）
+patch: Object（更新したいキーのみ）
+{
+  company_name?: string,
+  staff_name?: string,
+  category?: string,
+  due_date?: string,
+  status?: string,
+  note?: string
+}
+
+戻り値:
+ActionDto[]（listActions() と同等）
+
+前提
+- 先頭で assertSheetsAndColumns_() を必ず実行（NGなら throw）
+- category/status は固定値のみ許可
+- due_date を更新する場合は空禁止
+- note を更新する場合は空禁止
+- completed_at は UI から直接編集不可（サーバ制御のみ）
+
+エラー方針
+- actionId が見つからない場合 throw Error("NOT_FOUND: action_id")
+- patch により必須違反が発生する場合はユーザー向け日本語で throw
+
+アルゴリズム（処理手順）
+Step1
+assertSheetsAndColumns_()
+
+Step2
+if String(actionId||"").trim()=="" then throw Error("actionId is required")
+
+Step3
+ss = SpreadsheetApp.openById(APP_SPREADSHEET_ID)
+sheet = ss.getSheetByName("Actions")
+col = buildColumnIndexMap_(sheet)
+
+Step4
+rowIndex = findActionRow_(sheet, col, actionId)
+- 見つからなければ throw Error("NOT_FOUND: action_id")
+
+Step5
+current = sheet.getRange(rowIndex, 1, 1, sheet.getLastColumn()).getValues()[0]
+currentStatus = String(current[col["status"]-1] || "").trim()
+
+Step6
+patch 正規化
+- if "category" in patch then 値チェック（固定値以外は throw）
+- if "status" in patch then 値チェック（固定値以外は throw）
+- if "due_date" in patch then
+    s=String(patch.due_date||"").trim()
+    if s=="" then throw Error("期限日（due_date）は必須です。")
+    dueDateDate = normalizeDateToDate_(s)
+- if "note" in patch then
+    n=String(patch.note||"").trim()
+    if n=="" then throw Error("メモ（note）は必須です。")
+
+Step7
+nowStr = nowJst_()
+
+Step8
+セル更新（列番号で setValue）
+- if "company_name" in patch then sheet.getRange(rowIndex, col["company_name"]).setValue(String(patch.company_name||"").trim())
+- if "staff_name" in patch then sheet.getRange(rowIndex, col["staff_name"]).setValue(String(patch.staff_name||"").trim())
+- if "category" in patch then sheet.getRange(rowIndex, col["category"]).setValue(String(patch.category||"").trim())
+- if "due_date" in patch then sheet.getRange(rowIndex, col["due_date"]).setValue(dueDateDate)
+- if "note" in patch then sheet.getRange(rowIndex, col["note"]).setValue(String(patch.note||"").trim())
+
+Step9
+status と completed_at 制御
+- newStatus = currentStatus
+- if "status" in patch then newStatus = String(patch.status||"").trim()
+- if "status" in patch then
+    sheet.getRange(rowIndex, col["status"]).setValue(newStatus)
+
+    if newStatus == "完了" and currentStatus != "完了" then
+      sheet.getRange(rowIndex, col["completed_at"]).setValue(nowStr)
+    else if newStatus != "完了" and currentStatus == "完了" then
+      sheet.getRange(rowIndex, col["completed_at"]).setValue("")
+    else
+      // 変更なし（同じ status）なら completed_at 触らない
+      // 完了のまま完了、未完のまま未完も同様
+  end if
+
+Step10
+updated_at は必ず更新
+sheet.getRange(rowIndex, col["updated_at"]).setValue(nowStr)
+
+Step11
+return listActions()
+
+受入基準
+- status を完了へ変更した瞬間だけ completed_at が入る
+- status を未対応/対応中へ戻した瞬間に completed_at が空になる
+- status を触らない更新は completed_at を変更しない
+- updated_at は常に now になる
+
+
+------------------------------------------------------------
+deleteAction(actionId) 詳細設計（MVP）
+------------------------------------------------------------
+目的
+UI 上の削除（論理削除）を行い、削除後の一覧（listActions同等）を返す。
+
+関数仕様
+関数名:
+deleteAction(actionId)
+
+引数:
+actionId: string（必須）
+
+戻り値:
+ActionDto[]（listActions() と同等）
+
+前提
+- 先頭で assertSheetsAndColumns_() を必ず実行（NGなら throw）
+- 物理削除はしない
+- 復元機能なし
+
+エラー方針
+- actionId が見つからない場合 throw Error("NOT_FOUND: action_id")
+
+アルゴリズム（処理手順）
+Step1
+assertSheetsAndColumns_()
+
+Step2
+ss = SpreadsheetApp.openById(APP_SPREADSHEET_ID)
+sheet = ss.getSheetByName("Actions")
+col = buildColumnIndexMap_(sheet)
+
+Step3
+rowIndex = findActionRow_(sheet, col, actionId)
+見つからなければ throw Error("NOT_FOUND: action_id")
+
+Step4
+nowStr = nowJst_()
+
+Step5
+sheet.getRange(rowIndex, col["is_deleted"]).setValue(true)
+sheet.getRange(rowIndex, col["deleted_at"]).setValue(nowStr)
+sheet.getRange(rowIndex, col["updated_at"]).setValue(nowStr)
+
+Step6
+return listActions()
+
+受入基準
+- is_deleted=true の行は listActions 返却に含まれない
+- deleted_at/updated_at が now になる
+- 物理削除されない
+
+
+------------------------------------------------------------
+getStaffCandidates(companyName) 詳細設計（MVP）
+------------------------------------------------------------
+目的
+外部スプレッドシートからスタッフ候補一覧を取得し返す。
+参照失敗してもエラーにせず空配列を返して続行する。
+
+関数仕様
+関数名:
+getStaffCandidates(companyName)
+
+引数:
+companyName: string（必須想定だが、空でもエラーにせず [] を返してよい）
+
+戻り値:
+string[]（スタッフ名候補配列）
+
+参照元（固定）
+- スプレッドシートID: 1X0sdAY32MFk98mwqwPMFOpdI5-2KSfjSU71NBDOoyUo
+- シート名: "決定"
+- E列 = 企業名
+- C列 = スタッフ名
+
+エラー方針（固定）
+- 参照失敗（権限/ID/シート無し/一時障害など）は握りつぶす
+- throw しない
+- return [] で続行
+
+アルゴリズム（処理手順）
+Step1
+cn = String(companyName||"").trim()
+if cn=="" then return []
+
+Step2
+TRY
+  ss = SpreadsheetApp.openById("1X0sdAY32MFk98mwqwPMFOpdI5-2KSfjSU71NBDOoyUo")
+  sheet = ss.getSheetByName("決定")
+  if !sheet then return []
+
+  lastRow = sheet.getLastRow()
+  if lastRow <= 1 then return []
+
+  // A..E まで読めば C/E を拾える
+  values = sheet.getRange(2, 1, lastRow-1, 5).getValues()
+
+  set = new Set()
+  FOR each r in values
+    company = String(r[4] || "").trim()   // E列
+    staff   = String(r[2] || "").trim()   // C列
+    if company == cn and staff != "" then set.add(staff)
+  END FOR
+
+  arr = Array.from(set)
+  arr.sort()  // 文字列昇順でよい
+  return arr
+CATCH (e)
+  return []
+END TRY
+
+受入基準
+- 一致企業のスタッフ名のみ返る
+- 重複が除外される
+- 空欄スタッフ名は除外される
+- 外部参照が壊れてもエラー停止せず [] になる
+
+
+------------------------------------------------------------
+非公開内部関数（このMVPで必要な分だけ）詳細設計
+------------------------------------------------------------
+
+(1) loadCompanies_()
+目的
+Companies.company_name の一覧を返す（空欄除外、重複除外、昇順）。
+
+関数
+loadCompanies_()
+
+戻り値
+string[]
+
+手順
+Step1 assertSheetsAndColumns_()
+Step2 ss open
+Step3 sheet=Companies, col=buildColumnIndexMap_
+Step4 2行目以降 company_name を集める（trim, 空除外, Set）
+Step5 sort 昇順
+Step6 return
+
+(2) findActionRow_(sheet, col, actionId)
+目的
+Actions シートから action_id 一致の行番号（1始まり）を返す。
+
+関数
+findActionRow_(sheet, col, actionId)
+
+戻り値
+number（行番号）
+見つからない場合は 0 を返して呼び出し側で throw する方針でもよい（実装で統一）
+
+手順
+Step1 lastRow=getLastRow
+Step2 values = getRange(2, col["action_id"], lastRow-1, 1).getValues()
+Step3 for i=0..len-1
+  if String(values[i][0]||"").trim() == actionId then return i+2
+Step4 return 0
+
+(3) normalizeDate_(value)
+目的
+due_date の値（Date/文字列/空）を yyyy-MM-dd の文字列に正規化する。
+
+関数
+normalizeDate_(value)
+
+戻り値
+string（yyyy-MM-dd or ""）
+
+ルール
+- value が Date の場合: Utilities.formatDate(value,"Asia/Tokyo","yyyy-MM-dd")
+- value が文字列の場合:
+  - trim
+  - "" なら ""
+  - "yyyy-MM-dd" または "yyyy/MM/dd" を許容して yyyy-MM-dd に整形
+  - それ以外はそのまま返すのではなく "" でもよい（MVPは安全側）
+- 例外時は ""（listActions で落ちないこと優先）
+
+(4) normalizeDateToDate_(ymdStr)
+目的
+UI入力の期限文字列を Date(00:00:00) に変換する（シート保存用）。
+
+関数
+normalizeDateToDate_(ymdStr)
+
+戻り値
+Date
+手順
+- s = trim
+- "yyyy-MM-dd" なら split("-")
+- "yyyy/MM/dd" なら split("/")
+- new Date(y, m-1, d) を生成
+- 例外時は throw（create/update の入力不正として扱う）
+
+(5) nowJst_()
+目的
+Asia/Tokyo 基準の現在日時を文字列化する。
+
+関数
+nowJst_()
+
+戻り値
+string（例: "yyyy-MM-dd'T'HH:mm:ss" でも可。ISO文字列相当で統一）
+
+手順
+return Utilities.formatDate(new Date(),"Asia/Tokyo","yyyy-MM-dd'T'HH:mm:ss")
+
+(6) generateActionId_()
+目的
+一意な action_id を生成する。
+
+関数
+generateActionId_()
+
+戻り値
+string
+
+要件（固定）
+例: A_yyyyMMdd_HHmmss_XXXX
+
+手順
+Step1 ts = Utilities.formatDate(new Date(),"Asia/Tokyo","yyyyMMdd_HHmmss")
+Step2 rand = Math.random() 等で 4桁相当を生成（0000-9999）
+Step3 return "A_"+ts+"_"+rand4
+
+============================================================
+ここまで
+============================================================
+
+============================================================
+営業支援ツール 詳細設計（続き）
+対象：サーバ側（GAS）関数仕様
+開始位置：listActions()
+============================================================
+
+============================================================
+listActions() 詳細設計（MVP）
+============================================================
+
+目的
+Actions の一覧を取得して返す。
+UI表示対象のみ返す（論理削除は除外）。
+並び順は due_date 昇順 -> created_at 昇順。
+
+関数仕様
+関数名:
+listActions()
+
+引数:
+なし
+
+戻り値:
+ActionDto[] 配列
+
+ActionDto（返却スキーマ固定）
+{
+  action_id: string,
+  created_at: string,
+  updated_at: string,
+  due_date: string,        // 返却時は yyyy-MM-dd 文字列に統一
+  company_name: string,
+  staff_name: string,
+  category: string,
+  status: string,
+  note: string,
+  completed_at: string
+}
+
+備考（固定）
+- is_deleted / deleted_at は返さない（UI非表示・返却不要）
+- due_date はシート上は Date 型想定だが、返却は表示用文字列に統一してよい
+- TZ は Asia/Tokyo 固定
+
+エラー方針（固定）
+- シート構造不正は throw Error で即停止（assertSheetsAndColumns_ に委譲）
+- 例外メッセージは開発者向け英語識別子でよい
+
+アルゴリズム（処理手順）
+Step1
+assertSheetsAndColumns_() を実行（NGなら throw で停止）
+
+Step2
+SpreadsheetApp.openById(APP_SPREADSHEET_ID) で対象SSを開く
+
+Step3
+actionsSheet = ss.getSheetByName("Actions") を取得
+
+Step4
+colMap = buildColumnIndexMap_(actionsSheet) を作成
+
+Step5
+データ範囲を取得
+- lastRow = actionsSheet.getLastRow()
+- lastCol = actionsSheet.getLastColumn()
+- lastRow <= 1 の場合は空配列を返す（ヘッダのみ）
+- values = actionsSheet.getRange(2,1,lastRow-1,lastCol).getValues()
+
+Step6
+各行を走査して ActionDto を生成
+- is_deleted 列が true の行は除外（返さない）
+- 各列は colMap で列番号を参照して取得する（列順依存禁止）
+- 文字列項目は String(value).trim() に揃える（null/undefined は "" 扱いでよい）
+- due_date:
+  - 値が Date の場合: Utilities.formatDate(value,"Asia/Tokyo","yyyy-MM-dd")
+  - 値が文字列の場合: 可能なら normalizeDate_(value) で yyyy-MM-dd に正規化（不正はそのままでもよいが、原則は正規化）
+- created_at / updated_at / completed_at は保存値をそのまま文字列で返してよい（trim）
+
+Step7
+ソート（固定）
+- primary: due_date 昇順（yyyy-MM-dd 文字列比較でよい）
+- secondary: created_at 昇順
+- due_date が空の場合は末尾扱い（MVPのためルール固定で良い）
+  例: 空を "9999-12-31" 相当として比較
+
+Step8
+ActionDto[] を return
+
+受入基準
+- is_deleted=true の行が返却されない
+- due_date 昇順 -> created_at 昇順で並ぶ
+- due_date が Date でも返却は yyyy-MM-dd 文字列
+- 列順変更されても colMap 参照で壊れない
+
+
+============================================================
+createAction(payload) 詳細設計（MVP）
+============================================================
+
+目的
+新規 Action を1件追加する。
+追加後、UI更新用に listActions() と同等の一覧を返す。
+
+関数仕様
+関数名:
+createAction(payload)
+
+引数:
+payload（Object）
+{
+  company_name: string,
+  staff_name: string,   // 任意
+  category: string,     // 固定3種
+  due_date: string,     // 必須（yyyy-MM-dd 想定）
+  status: string,       // 固定3種。未指定は "未対応"
+  note: string          // 必須
+}
+
+戻り値:
+ActionDto[]（listActions() と同等の一覧）
+
+固定配列（値検証用）
+categories = ["契約・請求","営業・トラブル","その他"]
+statuses   = ["未対応","対応中","完了"]
+
+自動セット（固定）
+- action_id    = generateActionId_()
+- created_at   = nowJst_()  // 文字列
+- updated_at   = nowJst_()
+- completed_at = (status=="完了") ? nowJst_() : ""
+- is_deleted   = false
+- deleted_at   = ""
+
+保存方針（固定）
+- due_date はシート上は Date 型で保存する
+- UI入力は文字列でも、保存前に Date へ変換して書き込む
+
+バリデーション（固定）
+- due_date 必須（空/未指定はエラー）
+- note 必須（空/未指定はエラー）
+- category は categories のいずれか以外はエラー
+- status は statuses のいずれか以外はエラー（未指定は "未対応" に補正）
+- company_name は空禁止（Companies 参照整合チェックはMVPでは必須にしないが、空は不可）
+
+エラー方針（固定）
+- シート構造不正は throw Error（assertSheetsAndColumns_ に委譲）
+- 入力必須違反はユーザー向け日本語メッセージで throw してよい
+  例:
+  - "due_date は必須です。"
+  - "note は必須です。"
+
+アルゴリズム（処理手順）
+Step1
+assertSheetsAndColumns_() を実行（NGなら throw）
+
+Step2
+payload を正規化
+- company_name = String(payload.company_name||"").trim()
+- staff_name   = String(payload.staff_name||"").trim()
+- category     = String(payload.category||"").trim()
+- status       = String(payload.status||"").trim()
+- due_date_raw = payload.due_date
+- note         = String(payload.note||"").trim()
+- status 未指定なら "未対応" にする
+
+Step3
+validateCreate_ 相当チェック
+- due_date_raw 空なら throw
+- note 空なら throw
+- category/status が固定配列に無ければ throw
+- company_name 空なら throw
+
+Step4
+due_date を Date 化
+- dueDateObj = normalizeDateToDate_(due_date_raw)
+  - "yyyy-MM-dd" 文字列を Date(00:00:00, Asia/Tokyo相当) に変換
+  - 変換不可なら throw "due_date の形式が不正です。"
+
+Step5
+行データを構築（列名ベース）
+- action_id  = generateActionId_()
+- nowStr     = nowJst_()
+- created_at = nowStr
+- updated_at = nowStr
+- completed_at = (status=="完了") ? nowStr : ""
+- is_deleted = false
+- deleted_at = ""
+
+Step6
+Actions へ追記
+- ss = SpreadsheetApp.openById(APP_SPREADSHEET_ID)
+- sheet = ss.getSheetByName("Actions")
+- colMap = buildColumnIndexMap_(sheet)
+- newRow = sheet.getLastRow() + 1
+- 必須列それぞれに setValue で書き込む（列番号は colMap）
+  - due_date は Date を setValue
+  - is_deleted は boolean を setValue
+
+Step7
+listActions() を呼び出して return（推奨）
+- return listActions()
+
+受入基準
+- due_date/note 未入力はエラー
+- status 未指定は "未対応"
+- status=="完了" で completed_at が入る
+- Actions へ1行追加される（物理削除なし）
+- 返却は listActions() 同等の配列
+
+
+============================================================
+updateAction(actionId, patch) 詳細設計（MVP）
+============================================================
+
+目的
+既存 Action を更新する（モーダル編集含む）。
+更新後、UI更新用に listActions() と同等の一覧を返す。
+
+関数仕様
+関数名:
+updateAction(actionId, patch)
+
+引数:
+actionId: string（必須）
+patch: Object（更新したい項目のみ）
+{
+  company_name?: string,
+  staff_name?: string,
+  category?: string,
+  due_date?: string,   // yyyy-MM-dd 想定
+  status?: string,
+  note?: string
+}
+
+戻り値:
+ActionDto[]（listActions() と同等）
+
+固定配列（値検証用）
+categories = ["契約・請求","営業・トラブル","その他"]
+statuses   = ["未対応","対応中","完了"]
+
+更新ルール（固定）
+- updated_at は必ず nowJst_() で更新
+- status が "完了" になった瞬間: completed_at=nowJst_()
+- status が "未対応" または "対応中" に戻った瞬間: completed_at=""
+- status が変更されない更新: completed_at は変更しない
+- completed_at は UI から直接編集不可（patchに入っても無視してよい）
+- is_deleted=true の行は更新対象にしない（見つけたらエラーで停止してよい）
+
+バリデーション（固定）
+- actionId 必須（空はエラー）
+- due_date を更新する場合: 空は禁止、形式不正はエラー
+- note を更新する場合: 空は禁止
+- category/status を更新する場合: 固定配列以外はエラー
+
+エラー方針（固定）
+- シート構造不正は throw Error（assertSheetsAndColumns_）
+- actionId が見つからない場合は throw Error（例: "ACTION_NOT_FOUND")
+- 入力必須違反はユーザー向け日本語メッセージで throw してよい
+
+アルゴリズム（処理手順）
+Step1
+assertSheetsAndColumns_() を実行（NGなら throw）
+
+Step2
+actionId 正規化
+- id = String(actionId||"").trim()
+- 空なら throw
+
+Step3
+対象行を特定
+- ss = SpreadsheetApp.openById(APP_SPREADSHEET_ID)
+- sheet = ss.getSheetByName("Actions")
+- colMap = buildColumnIndexMap_(sheet)
+- rowIndex = findActionRow_(sheet, colMap, id)
+  - 見つからなければ throw "ACTION_NOT_FOUND"
+
+Step4
+現在値を取得
+- 現行 status を取得（colMap.status）
+- 現行 is_deleted を取得（colMap.is_deleted）
+- is_deleted==true なら throw "ACTION_DELETED"
+
+Step5
+patch を正規化（存在するキーのみ）
+- next_company_name = (patch.company_name がある場合) String(...).trim()
+- next_staff_name   = (patch.staff_name がある場合) String(...).trim()
+- next_category     = (patch.category がある場合) String(...).trim()
+- next_status       = (patch.status がある場合) String(...).trim()
+- next_due_date_raw = (patch.due_date がある場合) patch.due_date
+- next_note         = (patch.note がある場合) String(...).trim()
+
+Step6
+バリデーション
+- category 更新がある場合: categories に含まれるか
+- status 更新がある場合: statuses に含まれるか
+- due_date 更新がある場合:
+  - 空禁止
+  - normalizeDateToDate_(next_due_date_raw) が成功するか
+- note 更新がある場合: 空禁止
+
+Step7
+値の書き込み（列名ベース、存在する patch のみ）
+- if company_name 更新: sheet.getRange(rowIndex, colMap.company_name).setValue(next_company_name)
+- if staff_name 更新: setValue(next_staff_name)
+- if category 更新: setValue(next_category)
+- if due_date 更新: setValue(dueDateObj)  // Date
+- if note 更新: setValue(next_note)
+
+Step8
+status と completed_at の制御
+- oldStatus = 現行 status
+- if status 更新あり:
+  - if next_status=="完了" and oldStatus!="完了":
+      completed_at = nowJst_()
+    else if next_status!="完了" and oldStatus=="完了":
+      completed_at = ""
+    else:
+      completed_at 変更なし
+  - status 列は next_status を setValue
+- completed_at が変更対象なら completed_at 列を setValue
+
+Step9
+updated_at を必ず更新
+- sheet.getRange(rowIndex, colMap.updated_at).setValue(nowJst_())
+
+Step10
+listActions() を呼び出して return
+- return listActions()
+
+受入基準
+- actionId 不正/不存在はエラー
+- updated_at は必ず更新される
+- status 遷移に応じて completed_at が正しくセット/クリアされる
+- due_date は Date 型で保存される
+
+
+============================================================
+deleteAction(actionId) 詳細設計（MVP）
+============================================================
+
+目的
+UI上の削除（論理削除のみ）を行う。
+物理削除はしない。復元機能は持たない。
+削除後、UI更新用に listActions() と同等の一覧を返す。
+
+関数仕様
+関数名:
+deleteAction(actionId)
+
+引数:
+actionId: string（必須）
+
+戻り値:
+ActionDto[]（listActions() と同等）
+
+更新内容（固定）
+- is_deleted = true
+- deleted_at = nowJst_()
+- updated_at = nowJst_()
+
+エラー方針（固定）
+- シート構造不正は throw Error（assertSheetsAndColumns_）
+- actionId が見つからない場合は throw Error（例: "ACTION_NOT_FOUND")
+
+アルゴリズム（処理手順）
+Step1
+assertSheetsAndColumns_() を実行（NGなら throw）
+
+Step2
+actionId 正規化
+- id = String(actionId||"").trim()
+- 空なら throw
+
+Step3
+対象行を特定
+- ss = SpreadsheetApp.openById(APP_SPREADSHEET_ID)
+- sheet = ss.getSheetByName("Actions")
+- colMap = buildColumnIndexMap_(sheet)
+- rowIndex = findActionRow_(sheet, colMap, id)
+  - 見つからなければ throw
+
+Step4
+論理削除を書き込み
+- nowStr = nowJst_()
+- sheet.getRange(rowIndex, colMap.is_deleted).setValue(true)
+- sheet.getRange(rowIndex, colMap.deleted_at).setValue(nowStr)
+- sheet.getRange(rowIndex, colMap.updated_at).setValue(nowStr)
+
+Step5
+listActions() を呼び出して return
+- return listActions()
+
+受入基準
+- is_deleted=true のレコードは listActions() に出ない
+- deleted_at/updated_at がセットされる
+- 物理削除されない
+
+
+============================================================
+getStaffCandidates(companyName) 詳細設計（MVP）
+============================================================
+
+目的
+外部スプレッドシートからスタッフ候補一覧（スタッフ名）を返す。
+参照失敗してもエラーにせず空配列で続行する（固定要件）。
+
+関数仕様
+関数名:
+getStaffCandidates(companyName)
+
+引数:
+companyName: string（Companiesで選択された企業名）
+
+戻り値:
+string[]（スタッフ名候補の配列）
+
+参照元（固定）
+- スプレッドシートID: 1X0sdAY32MFk98mwqwPMFOpdI5-2KSfjSU71NBDOoyUo
+- シート名: "決定"
+- E列 = 企業名
+- C列 = スタッフ名
+
+ロジック（固定）
+- E列が companyName と一致する行の C列を収集
+- 重複除外（Set）
+- 空欄除外（trim後空は除外）
+
+例外時（固定）
+- 参照失敗（権限/ID/シート欠如/取得エラー等）は握りつぶす
+- return [] で続行（throw しない）
+
+アルゴリズム（処理手順）
+Step1
+name = String(companyName||"").trim()
+- 空なら return []（候補なし）
+
+Step2
+try ブロック開始
+
+Step3
+refSs = SpreadsheetApp.openById(EXTERNAL_STAFF_SS_ID)
+refSheet = refSs.getSheetByName("決定")
+- 無ければ return []
+
+Step4
+lastRow = refSheet.getLastRow()
+- lastRow <= 1 の場合 return []
+
+Step5
+E列(企業名)とC列(スタッフ名)をまとめて取得
+- range = refSheet.getRange(2,1,lastRow-1,5).getValues()
+  - C列=3, E列=5 を参照
+
+Step6
+一致行のC列を収集
+- staff = String(row[2]||"").trim()
+- comp  = String(row[4]||"").trim()
+- comp == name の場合のみ staff を追加
+- staff 空は除外
+
+Step7
+重複除外して配列化
+- return Array.from(set).sort()（順序は任意だが安定のためソート推奨）
+
+Step8
+catch ブロック
+- return []（エラーは握りつぶし）
+
+受入基準
+- 参照失敗しても画面側処理が止まらない（空配列で返る）
+- 同一企業のスタッフが候補に出る
+- 重複や空欄は出ない
+
+
+============================================================
+非公開内部関数（サーバ内） 詳細設計（MVP）
+============================================================
+
+============================================================
+loadCompanies_() 詳細設計（MVP）
+============================================================
+
+目的
+Companies.company_name の一覧を取得して返す。
+空欄除外、重複除外、昇順ソート。
+
+関数仕様
+関数名:
+loadCompanies_()
+
+引数:
+なし
+
+戻り値:
+string[]（company_name 一覧）
+
+前提
+- assertSheetsAndColumns_ 実行後に呼ばれる前提
+
+アルゴリズム（処理手順）
+Step1
+ss = SpreadsheetApp.openById(APP_SPREADSHEET_ID)
+sheet = ss.getSheetByName("Companies")
+
+Step2
+colMap = buildColumnIndexMap_(sheet)
+col = colMap.company_name
+
+Step3
+lastRow = sheet.getLastRow()
+- lastRow <= 1 なら return []
+
+Step4
+values = sheet.getRange(2,col,lastRow-1,1).getValues()
+
+Step5
+Set で収集
+- name = String(v||"").trim()
+- 空は除外
+- set.add(name)
+
+Step6
+arr = Array.from(set)
+arr.sort()  // 文字列昇順
+return arr
+
+受入基準
+- 空欄行は返らない
+- 重複が返らない
+- Companies に追加した企業が最新で返る
+
+
+============================================================
+findActionRow_(sheet, colMap, actionId) 詳細設計（MVP）
+============================================================
+
+目的
+Actions シートから action_id 一致行の行番号(1始まり)を返す。
+
+関数仕様
+関数名:
+findActionRow_(sheet, colMap, actionId)
+
+引数:
+sheet: Actions の Sheet
+colMap: buildColumnIndexMap_ の結果
+actionId: string
+
+戻り値:
+number（行番号, 1始まり）
+- 見つからなければ -1 を返すか、呼び出し側で throw 前提で -1 を返す（どちらかで統一）
+  推奨: -1 を返し、呼び出し側で "ACTION_NOT_FOUND" throw
+
+アルゴリズム（処理手順）
+Step1
+id = String(actionId||"").trim()
+- 空なら return -1
+
+Step2
+lastRow = sheet.getLastRow()
+- lastRow <= 1 なら return -1
+
+Step3
+col = colMap.action_id
+values = sheet.getRange(2,col,lastRow-1,1).getValues()
+
+Step4
+for i=0..values.length-1
+- v = String(values[i][0]||"").trim()
+- if v == id:
+    return (2 + i)
+
+Step5
+return -1
+
+受入基準
+- action_id が列順変更されても colMap 参照で壊れない
+- 一致行の正しい行番号を返す
+
+
+============================================================
+normalizeDateToDate_(value) 詳細設計（MVP）
+============================================================
+
+目的
+UI入力の due_date を Date(00:00:00) に変換する。
+保存は Date 型。
+
+関数仕様
+関数名:
+normalizeDateToDate_(value)
+
+引数:
+value: string | Date
+
+戻り値:
+Date
+
+エラー
+- 変換不能は throw（ユーザー向けメッセージでよい）
+
+アルゴリズム（処理手順）
+Step1
+if value is Date:
+- return new Date(value.getFullYear(), value.getMonth(), value.getDate())
+
+Step2
+s = String(value||"").trim()
+- 空なら throw
+
+Step3
+"yyyy-MM-dd" を想定して split
+- parts = s.split("-")
+- parts.length != 3 なら throw
+
+Step4
+y = Number(parts[0]), m = Number(parts[1]), d = Number(parts[2])
+- 数値でない/範囲外なら throw
+
+Step5
+dt = new Date(y, m-1, d)
+- dt の各要素が入力と一致しない場合（不正日付）は throw
+
+Step6
+return dt
+
+受入基準
+- "2026-02-28" を正しく Date に変換
+- "2026/02/28" 等の不正形式はエラー（MVPでは許容しない）
+- Date 入力でも日付のみ（時刻0）に正規化
+
+
+============================================================
+nowJst_() / generateActionId_() 詳細設計（MVP）
+============================================================
+
+nowJst_()
+目的
+Asia/Tokyo 基準の現在時刻を文字列で返す（created_at/updated_at等用）。
+
+関数名:
+nowJst_()
+
+戻り値:
+string（例: "2026-02-28T11:00:00+09:00" 形式でもよい。形式は統一すること）
+
+推奨実装方針（固定要件）
+- Utilities.formatDate(new Date(),"Asia/Tokyo","yyyy-MM-dd'T'HH:mm:ssXXX") 等
+- 返却形式はプロジェクト内で統一（MVPは任意だが統一必須）
+
+generateActionId_()
+目的
+ユニークな action_id を生成する。
+
+関数名:
+generateActionId_()
+
+戻り値:
+string（例: "A_yyyyMMdd_HHmmss_XXXX"）
+
+アルゴリズム
+- timestamp = Utilities.formatDate(new Date(),"Asia/Tokyo","yyyyMMdd_HHmmss")
+- random4 = 0000-9999（ゼロ埋め4桁）
+- return "A_" + timestamp + "_" + random4
+
+受入基準
+- 連続呼び出しでも衝突しにくい
+- 書式が常に同じ
+
+
+============================================================
+doGet(e) 詳細設計（MVP）
+============================================================
+
+目的
+Web画面（HTML）を返す。
+
+関数仕様
+関数名:
+doGet(e)
+
+引数:
+e（未使用）
+
+戻り値:
+HtmlOutput
+
+アルゴリズム（処理手順）
+Step1
+return HtmlService.createHtmlOutputFromFile("index")
+- ファイル名は実装に合わせる（index.html を想定）
+- タイトル設定等は任意（MVP）
+
+受入基準
+- WebアプリURLで画面が表示される
+- サーバ公開関数は google.script.run で呼ばれる前提
