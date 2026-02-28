@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>営業支援ツール（MVP）</title>
+    <style>
+      :root {
+        --primary: #00a4e4;
+        --primary-dark: #0089c4;
+        --primary-light: #e6f7ff;
+
+        --bg: #f8fbfe;
+        --card: rgba(255, 255, 255, 0.95);
+        --text: #1e293b;
+        --muted: #64748b;
+
+        --border: rgba(226, 232, 240, 0.9);
+        --input-border: #e2e8f0;
+
+        --danger: #ef4444;
+        --today: #f59e0b;
+
+        --shadow-sm: 0 2px 8px rgba(0, 164, 228, 0.08);
+        --shadow-md: 0 10px 25px -5px rgba(0, 164, 228, 0.15),
+                     0 8px 10px -6px rgba(0, 164, 228, 0.10);
+
+        --radius-lg: 20px;
+        --radius-md: 12px;
+
+        --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Meiryo', sans-serif;
+        margin: 0;
+        padding: 28px;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, #f0f9ff 0%, transparent 55%),
+          radial-gradient(circle at top right, #e0f2fe 0%, transparent 55%),
+          linear-gradient(180deg, #f7fbff 0%, var(--bg) 100%);
+        background-attachment: fixed;
+        line-height: 1.6;
+      }
+
+      h2 {
+        margin: 0 0 18px;
+        font-size: 20px;
+        font-weight: 800;
+        letter-spacing: 0.01em;
+        color: var(--primary-dark);
+        display: flex;
+        align-items: center;
+      }
+
+      h2::before {
+        content: "";
+        display: inline-block;
+        width: 6px;
+        height: 22px;
+        background: var(--primary);
+        margin-right: 12px;
+        border-radius: 10px;
+      }
+
+      h3 {
+        margin: 0 0 16px;
+        font-size: 18px;
+        font-weight: 800;
+        color: var(--text);
+      }
+
+      .panel {
+        border: 1px solid rgba(255, 255, 255, 0.65);
+        border-radius: var(--radius-lg);
+        padding: 24px;
+        margin-bottom: 18px;
+        background: var(--card);
+        box-shadow: var(--shadow-md);
+        backdrop-filter: blur(10px);
+      }
+
+      .form-grid {
+        display: grid;
+        grid-template-columns: 170px minmax(0, 1fr);
+        gap: 14px 18px;
+        align-items: center;
+      }
+
+      label {
+        font-size: 14px;
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      input, select, textarea, button { font: inherit; }
+
+      input, select, textarea {
+        width: 100%;
+        max-width: 760px;
+        min-height: 44px;
+        padding: 10px 14px;
+        border: 2px solid var(--input-border);
+        border-radius: var(--radius-md);
+        background: #fff;
+        color: var(--text);
+        transition: var(--transition);
+        font-size: 15px;
+      }
+
+      input[type="date"] { max-width: 220px; }
+
+      textarea {
+        max-width: 760px;
+        min-height: 120px;
+        resize: vertical;
+        line-height: 1.7;
+      }
+
+      input:focus, select:focus, textarea:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 4px rgba(0, 164, 228, 0.12);
+        background: #fff;
+      }
+
+      .row { margin-top: 14px; }
+
+      .contacts {
+        white-space: pre-wrap;
+        background: var(--primary-light);
+        border: 1px dashed rgba(0, 164, 228, 0.75);
+        border-radius: var(--radius-md);
+        padding: 12px 14px;
+        color: var(--primary-dark);
+        min-height: 44px;
+      }
+
+      .button-row, .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .button-row {
+        margin-top: 18px;
+        padding-top: 14px;
+        border-top: 1px solid rgba(226, 232, 240, 0.9);
+      }
+
+      button {
+        border: 1px solid transparent;
+        border-radius: var(--radius-md);
+        min-height: 44px;
+        padding: 0 18px;
+        cursor: pointer;
+        transition: var(--transition);
+        font-weight: 800;
+        letter-spacing: 0.02em;
+      }
+
+      button:hover { filter: brightness(1.02); transform: translateY(-1px); }
+      button:active { transform: translateY(1px); }
+
+      #create_btn,
+      #modal_save_btn {
+        background: linear-gradient(180deg, #38bdf8 0%, var(--primary) 100%);
+        color: #fff;
+        box-shadow:
+          0 4px 0 #0077a6,
+          0 10px 18px rgba(0, 164, 228, 0.28);
+        position: relative;
+        top: 0;
+      }
+
+      #create_btn:hover,
+      #modal_save_btn:hover {
+        box-shadow:
+          0 5px 0 #0077a6,
+          0 12px 22px rgba(0, 164, 228, 0.30);
+      }
+
+      #create_btn:active,
+      #modal_save_btn:active {
+        top: 3px;
+        box-shadow:
+          0 1px 0 #0077a6,
+          0 3px 8px rgba(0, 164, 228, 0.22);
+      }
+
+      #modal_close_btn {
+        background: #f1f5f9;
+        border-color: #e2e8f0;
+        color: #475569;
+      }
+
+      .actions button {
+        background: #fff;
+        border-color: #e2e8f0;
+        color: #475569;
+        min-height: 36px;
+        padding: 0 12px;
+        font-weight: 700;
+        font-size: 13px;
+      }
+
+      .actions button:hover {
+        background: var(--primary-light);
+        border-color: rgba(0, 164, 228, 0.55);
+        color: var(--primary-dark);
+      }
+
+      .actions button:last-child {
+        background: #fff;
+        border-color: #fee2e2;
+        color: #b91c1c;
+      }
+
+      .actions button:last-child:hover {
+        background: #fef2f2;
+        border-color: #fecaca;
+        color: #b91c1c;
+      }
+
+      .table-wrap {
+        overflow: auto;
+        border-radius: var(--radius-md);
+        border: 1px solid #e2e8f0;
+        box-shadow: var(--shadow-sm);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        background: #fff;
+      }
+
+      th, td {
+        border-bottom: 1px solid #f1f5f9;
+        padding: 12px 12px;
+        vertical-align: top;
+        font-size: 14px;
+      }
+
+      th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: #f8fafc;
+        color: var(--muted);
+        text-align: left;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        border-bottom: 2px solid #e2e8f0;
+      }
+
+      tbody tr:hover td {
+        background: #f0f9ff;
+      }
+
+      tr.is-complete { opacity: 0.55; }
+      tr.is-complete td { text-decoration: line-through; }
+
+      tr.is-overdue td { color: var(--danger); }
+      tr.is-overdue td:nth-child(3) { font-weight: 900; }
+
+      tr.is-today td { color: var(--today); font-weight: 800; }
+      tr.is-today td:nth-child(3) { font-weight: 900; }
+
+      .note-preview {
+        cursor: pointer;
+        color: var(--primary-dark);
+        text-decoration: none;
+        border-bottom: 1px dashed rgba(0, 164, 228, 0.9);
+        text-underline-offset: 2px;
+        font-weight: 700;
+      }
+
+      .error {
+        color: #b91c1c;
+        margin-top: 8px;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.40);
+        backdrop-filter: blur(8px);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        z-index: 9999;
+      }
+
+      .modal {
+        width: min(760px, 96vw);
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        border-radius: var(--radius-lg);
+        padding: 22px;
+        box-shadow: 0 25px 55px rgba(0, 0, 0, 0.22);
+        position: relative;
+        z-index: 10000;
+        backdrop-filter: blur(12px);
+        max-height: 90vh;
+        overflow: auto;
+      }
+
+      .muted {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+        word-break: break-all;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 10px 12px;
+      }
+
+      @media (max-width: 860px) {
+        body { padding: 14px; }
+
+        .panel, .modal {
+          padding: 16px;
+          border-radius: 16px;
+        }
+
+        .form-grid {
+          grid-template-columns: 1fr;
+          gap: 8px;
+        }
+
+        label { margin-top: 6px; }
+
+        input, select, textarea { max-width: 100%; }
+        input[type="date"] { max-width: 100%; }
+
+        .actions { flex-direction: column; align-items: stretch; }
+        .actions button { width: 100%; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="panel">
+      <h2>新規登録</h2>
+      <div class="form-grid">
+        <label for="company_name">1. 企業名</label>
+        <select id="company_name"></select>
+
+        <label for="staff_name">2. スタッフ名</label>
+        <div>
+          <input id="staff_name" list="staff_candidates" />
+          <datalist id="staff_candidates"></datalist>
+        </div>
+
+        <label for="category">3. カテゴリ</label>
+        <select id="category"></select>
+
+        <label for="due_date">4. 期限日</label>
+        <input id="due_date" type="date" />
+
+        <label for="status">5. 状態</label>
+        <select id="status"></select>
+
+        <label for="note">6. メモ</label>
+        <textarea id="note"></textarea>
+      </div>
+
+      <div class="row">
+        <strong>窓口表示（参照のみ）</strong>
+        <div id="contact_view" class="contacts"></div>
+      </div>
+
+      <div class="row button-row">
+        <button id="create_btn">登録</button>
+      </div>
+      <div id="form_error" class="error"></div>
+    </div>
+
+    <div class="panel">
+      <h2>一覧</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>企業名</th>
+              <th>スタッフ名</th>
+              <th>期限日</th>
+              <th>状態</th>
+              <th>カテゴリ</th>
+              <th>メモ</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="actions_tbody"></tbody>
+        </table>
+      </div>
+      <div id="table_error" class="error"></div>
+    </div>
+
+    <div id="modal_backdrop" class="modal-backdrop">
+      <div class="modal">
+        <h3>メモ編集</h3>
+        <div class="form-grid">
+          <label for="modal_company_name">企業名</label>
+          <select id="modal_company_name"></select>
+
+          <label for="modal_staff_name">スタッフ名</label>
+          <input id="modal_staff_name" list="staff_candidates_modal" />
+          <datalist id="staff_candidates_modal"></datalist>
+
+          <label for="modal_category">カテゴリ</label>
+          <select id="modal_category"></select>
+
+          <label for="modal_due_date">期限日</label>
+          <input id="modal_due_date" type="date" />
+
+          <label for="modal_status">状態</label>
+          <select id="modal_status"></select>
+
+          <label for="modal_note">メモ</label>
+          <textarea id="modal_note"></textarea>
+        </div>
+        <div class="row">
+          <strong>窓口表示（参照のみ）</strong>
+          <div id="modal_contact_view" class="contacts"></div>
+        </div>
+        <div class="row muted" id="modal_meta"></div>
+        <div class="row button-row">
+          <button id="modal_save_btn">更新</button>
+          <button id="modal_close_btn">閉じる</button>
+        </div>
+        <div id="modal_error" class="error"></div>
+      </div>
+    </div>
+
+    <script>
+      let state = {
+        companies: [],
+        categories: [],
+        statuses: [],
+        actions: [],
+        today_ymd: '',
+        editingActionId: ''
+      };
+
+      function init() {
+        google.script.run
+          .withSuccessHandler(function(res) {
+            state.companies = res.companies || [];
+            state.categories = res.categories || [];
+            state.statuses = res.statuses || [];
+            state.actions = res.actions || [];
+            state.today_ymd = res.today_ymd || '';
+            renderFormOptions();
+            resetForm();
+            loadStaffCandidates(document.getElementById('company_name').value, 'staff_candidates');
+            renderActions();
+            refreshContacts(false);
+          })
+          .withFailureHandler(showTableError)
+          .initPage();
+      }
+
+      function renderFormOptions() {
+        fillSelect(document.getElementById('company_name'), state.companies, false);
+        fillSelect(document.getElementById('category'), state.categories, false);
+        fillSelect(document.getElementById('status'), state.statuses, false);
+        fillSelect(document.getElementById('modal_company_name'), state.companies, false);
+        fillSelect(document.getElementById('modal_category'), state.categories, false);
+        fillSelect(document.getElementById('modal_status'), state.statuses, false);
+      }
+
+      function fillSelect(el, items, includeEmpty, textInputMode) {
+        if (textInputMode) return;
+        el.innerHTML = '';
+        if (includeEmpty) {
+          const op = document.createElement('option');
+          op.value = '';
+          op.textContent = '';
+          el.appendChild(op);
+        }
+        items.forEach(function(item) {
+          const op = document.createElement('option');
+          op.value = item;
+          op.textContent = item;
+          el.appendChild(op);
+        });
+      }
+
+      function resetForm() {
+        document.getElementById('company_name').selectedIndex = 0;
+        document.getElementById('staff_name').value = '';
+        document.getElementById('category').value = state.categories[0] || '';
+        document.getElementById('due_date').value = '';
+        document.getElementById('status').value = '未対応';
+        document.getElementById('note').value = '';
+        document.getElementById('staff_candidates').innerHTML = '';
+        document.getElementById('form_error').textContent = '';
+      }
+
+      function renderActions() {
+        const tbody = document.getElementById('actions_tbody');
+        tbody.innerHTML = '';
+
+        state.actions.forEach(function(a) {
+          const tr = document.createElement('tr');
+          applyRowClass(tr, a);
+          tr.appendChild(td(a.company_name));
+          tr.appendChild(td(a.staff_name));
+          tr.appendChild(td(a.due_date));
+          tr.appendChild(td(a.status));
+          tr.appendChild(td(a.category));
+
+          const noteTd = document.createElement('td');
+          const span = document.createElement('span');
+          span.className = 'note-preview';
+          span.textContent = truncate(a.note, 40);
+          span.addEventListener('click', function() { openModal(a.action_id); });
+          noteTd.appendChild(span);
+          tr.appendChild(noteTd);
+
+          const actionTd = document.createElement('td');
+          actionTd.className = 'actions';
+          const editBtn = document.createElement('button');
+          editBtn.textContent = '編集';
+          editBtn.addEventListener('click', function() { openModal(a.action_id); });
+
+          const deleteBtn = document.createElement('button');
+          deleteBtn.textContent = '削除';
+          deleteBtn.addEventListener('click', function() { doDelete(a.action_id); });
+
+          actionTd.appendChild(editBtn);
+          actionTd.appendChild(deleteBtn);
+          tr.appendChild(actionTd);
+
+          tbody.appendChild(tr);
+        });
+      }
+
+      function applyRowClass(tr, action) {
+        if (action.status === '完了') {
+          tr.classList.add('is-complete');
+          return;
+        }
+        if (action.due_date && action.due_date < state.today_ymd) {
+          tr.classList.add('is-overdue');
+          return;
+        }
+        if (action.due_date && action.due_date === state.today_ymd) {
+          tr.classList.add('is-today');
+        }
+      }
+
+      function td(text) {
+        const cell = document.createElement('td');
+        cell.textContent = text || '';
+        return cell;
+      }
+
+      function truncate(text, maxLen) {
+        const s = text || '';
+        return s.length > maxLen ? s.slice(0, maxLen) + '...' : s;
+      }
+
+      function loadStaffCandidates(companyName, datalistId) {
+        const target = document.getElementById(datalistId);
+        target.innerHTML = '';
+        google.script.run
+          .withSuccessHandler(function(list) {
+            target.innerHTML = '';
+            (list || []).forEach(function(name) {
+              const op = document.createElement('option');
+              op.value = name;
+              target.appendChild(op);
+            });
+          })
+          .withFailureHandler(function() {
+            target.innerHTML = '';
+          })
+          .getStaffCandidates(companyName);
+      }
+
+      function refreshContacts(isModal) {
+        const company = document.getElementById(isModal ? 'modal_company_name' : 'company_name').value;
+        const category = document.getElementById(isModal ? 'modal_category' : 'category').value;
+        const el = document.getElementById(isModal ? 'modal_contact_view' : 'contact_view');
+        if (!company) {
+          el.textContent = '';
+          return;
+        }
+
+        google.script.run
+          .withSuccessHandler(function(c) {
+            const cc = (c && c.contact_contract_billing) || '';
+            const cs = (c && c.contact_sales_trouble) || '';
+            if (category === '契約・請求') {
+              el.textContent = cc;
+            } else if (category === '営業・トラブル') {
+              el.textContent = cs;
+            } else {
+              el.textContent = [cc, cs].filter(Boolean).join('\n\n');
+            }
+          })
+          .withFailureHandler(function() {
+            el.textContent = '';
+          })
+          .getCompanyContacts(company);
+      }
+
+      function doCreate() {
+        document.getElementById('form_error').textContent = '';
+        const payload = {
+          company_name: document.getElementById('company_name').value,
+          staff_name: document.getElementById('staff_name').value,
+          category: document.getElementById('category').value,
+          due_date: document.getElementById('due_date').value,
+          status: document.getElementById('status').value,
+          note: document.getElementById('note').value
+        };
+
+        google.script.run
+          .withSuccessHandler(function(list) {
+            state.actions = list || [];
+            resetForm();
+            renderActions();
+            refreshContacts(false);
+          })
+          .withFailureHandler(function(e) {
+            document.getElementById('form_error').textContent = e && e.message ? e.message : String(e);
+          })
+          .createAction(payload);
+      }
+
+      function doDelete(actionId) {
+        document.getElementById('table_error').textContent = '';
+        google.script.run
+          .withSuccessHandler(function(list) {
+            state.actions = list || [];
+            renderActions();
+          })
+          .withFailureHandler(showTableError)
+          .deleteAction(actionId);
+      }
+
+      function openModal(actionId) {
+        const action = state.actions.find(function(a) { return a.action_id === actionId; });
+        if (!action) return;
+        state.editingActionId = actionId;
+
+        document.getElementById('modal_company_name').value = action.company_name;
+        document.getElementById('modal_staff_name').value = action.staff_name;
+        document.getElementById('modal_category').value = action.category;
+        document.getElementById('modal_due_date').value = action.due_date;
+        document.getElementById('modal_status').value = action.status;
+        document.getElementById('modal_note').value = action.note;
+        document.getElementById('modal_meta').textContent =
+          'action_id: ' + action.action_id + ' / created_at: ' + action.created_at + ' / updated_at: ' + action.updated_at;
+        document.getElementById('modal_error').textContent = '';
+
+        loadStaffCandidates(action.company_name, 'staff_candidates_modal');
+        refreshContacts(true);
+        document.getElementById('modal_backdrop').style.display = 'flex';
+      }
+
+      function closeModal() {
+        document.getElementById('modal_backdrop').style.display = 'none';
+      }
+
+      function doUpdateFromModal() {
+        document.getElementById('modal_error').textContent = '';
+        const patch = {
+          company_name: document.getElementById('modal_company_name').value,
+          staff_name: document.getElementById('modal_staff_name').value,
+          category: document.getElementById('modal_category').value,
+          due_date: document.getElementById('modal_due_date').value,
+          status: document.getElementById('modal_status').value,
+          note: document.getElementById('modal_note').value
+        };
+
+        google.script.run
+          .withSuccessHandler(function(list) {
+            state.actions = list || [];
+            renderActions();
+            closeModal();
+          })
+          .withFailureHandler(function(e) {
+            document.getElementById('modal_error').textContent = e && e.message ? e.message : String(e);
+          })
+          .updateAction(state.editingActionId, patch);
+      }
+
+      function showTableError(e) {
+        document.getElementById('table_error').textContent = e && e.message ? e.message : String(e);
+      }
+
+      document.getElementById('create_btn').addEventListener('click', doCreate);
+      document.getElementById('company_name').addEventListener('change', function(e) {
+        loadStaffCandidates(e.target.value, 'staff_candidates');
+        refreshContacts(false);
+      });
+      document.getElementById('category').addEventListener('change', function() { refreshContacts(false); });
+
+      document.getElementById('modal_company_name').addEventListener('change', function(e) {
+        loadStaffCandidates(e.target.value, 'staff_candidates_modal');
+        refreshContacts(true);
+      });
+      document.getElementById('modal_category').addEventListener('change', function() { refreshContacts(true); });
+
+      document.getElementById('modal_save_btn').addEventListener('click', doUpdateFromModal);
+      document.getElementById('modal_close_btn').addEventListener('click', closeModal);
+      document.getElementById('modal_backdrop').addEventListener('click', function(e) {
+        if (e.target.id === 'modal_backdrop') closeModal();
+      });
+
+      init();
+    </script>
+  </body>
+</html>
