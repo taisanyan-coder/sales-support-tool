@@ -29,6 +29,14 @@
         --radius-md: 12px;
 
         --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+
+        /* リンク集用パステルカラー定義（完成度UP） */
+        --p1: #ffedeb; --p1-t: #e15b5b; --p1-s: rgba(225, 91, 91, 0.2);
+        --p2: #eef2ff; --p2-t: #5865f2; --p2-s: rgba(88, 101, 242, 0.2);
+        --p3: #f0fdf4; --p3-t: #16a34a; --p3-s: rgba(22, 163, 74, 0.2);
+        --p4: #fffbeb; --p4-t: #d97706; --p4-s: rgba(217, 119, 6, 0.2);
+        --p5: #faf5ff; --p5-t: #9333ea; --p5-s: rgba(147, 51, 234, 0.2);
+        --p6: #ecfeff; --p6-t: #0891b2; --p6-s: rgba(8, 145, 178, 0.2);
       }
 
       * { box-sizing: border-box; }
@@ -46,30 +54,167 @@
         line-height: 1.6;
       }
 
+      /* --- リンク集 改善セクション --- */
       .page-header {
         display: flex;
-        justify-content: flex-end;
-        margin-bottom: 16px;
+        justify-content: flex-start;
+        margin-bottom: 24px;
       }
 
-      .header-utility-btn {
-        background: #fff;
-        border: 1px solid #e2e8f0;
-        border-radius: var(--radius-md);
-        min-height: 40px;
-        padding: 0 14px;
-        color: #475569;
-        font-weight: 700;
-        cursor: pointer;
-        transition: var(--transition);
+      .linkbar {
+        width: 100%;
+        border-radius: 28px;
+        padding: 20px 24px;
+        background: rgba(255, 255, 255, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.8);
+        box-shadow:
+          inset 0 1px 2px rgba(255, 255, 255, 0.9),
+          0 4px 15px rgba(0, 164, 228, 0.05);
+        backdrop-filter: blur(8px);
       }
 
-      .header-utility-btn:hover {
-        background: var(--primary-light);
-        border-color: rgba(0, 164, 228, 0.55);
+      .linkbar-title {
+        font-size: 13px;
         color: var(--primary-dark);
+        font-weight: 900;
+        letter-spacing: 0.1em;
+        margin-bottom: 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        opacity: 0.8;
       }
 
+      /* mask を使わない安定版 */
+      .linkbar-title::before {
+        content: "";
+        display: block;
+        width: 12px;
+        height: 12px;
+        border-radius: 999px;
+        background: radial-gradient(circle at 30% 30%,
+          rgba(255, 255, 255, 0.95) 0 35%,
+          var(--primary) 36% 100%
+        );
+        box-shadow:
+          0 1px 0 rgba(255, 255, 255, 0.85),
+          0 2px 6px rgba(0, 164, 228, 0.18);
+      }
+
+      .linkbar-items {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        align-items: center;
+      }
+
+      .link-pill {
+        --accent: var(--muted);
+        --accentSoft: #f1f5f9;
+        --accentShadow: rgba(100, 116, 139, 0.1);
+
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 18px;
+        border-radius: 20px;
+        text-decoration: none;
+        color: var(--accent);
+        background: var(--accentSoft);
+        font-weight: 800;
+        font-size: 14.5px;
+        min-height: 48px;
+        transition: var(--transition);
+        position: relative;
+        border: 2px solid #fff;
+        box-shadow:
+          0 6px 12px -2px var(--accentShadow),
+          0 3px 6px -3px rgba(0,0,0,0.1);
+      }
+
+      /* リンク色・アイコン色同期設定 */
+      .link-pill:nth-child(6n+1) { --accent: var(--p1-t); --accentSoft: var(--p1); --accentShadow: var(--p1-s); }
+      .link-pill:nth-child(6n+2) { --accent: var(--p2-t); --accentSoft: var(--p2); --accentShadow: var(--p2-s); }
+      .link-pill:nth-child(6n+3) { --accent: var(--p3-t); --accentSoft: var(--p3); --accentShadow: var(--p3-s); }
+      .link-pill:nth-child(6n+4) { --accent: var(--p4-t); --accentSoft: var(--p4); --accentShadow: var(--p4-s); }
+      .link-pill:nth-child(6n+5) { --accent: var(--p5-t); --accentSoft: var(--p5); --accentShadow: var(--p5-s); }
+      .link-pill:nth-child(6n+6) { --accent: var(--p6-t); --accentSoft: var(--p6); --accentShadow: var(--p6-s); }
+
+      /* 上品なぷっくりハイライト */
+      .link-pill::before {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 6px;
+        right: 6px;
+        height: 45%;
+        background: linear-gradient(180deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0) 100%);
+        border-radius: 16px 16px 4px 4px;
+        pointer-events: none;
+      }
+
+      .link-pill:hover {
+        transform: translateY(-4px);
+        box-shadow:
+          0 12px 20px -5px var(--accentShadow),
+          0 4px 8px -2px rgba(0,0,0,0.05);
+        filter: saturate(1.15);
+      }
+
+      /* 2重フォーカスリング */
+      .link-pill:focus-visible {
+        outline: none;
+        box-shadow:
+          0 0 0 2px #fff,
+          0 0 0 5px var(--accent),
+          0 8px 15px var(--accentShadow);
+      }
+
+      .link-pill:active { transform: translateY(-1px); }
+
+      /* アイコン・2トーン設定 */
+      .link-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        background: #fff;
+        border-radius: 10px;
+        flex-shrink: 0;
+        box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+      }
+      .link-icon svg {
+        width: 20px;
+        height: 20px;
+      }
+      .link-icon .svg-stroke { stroke: var(--accent); }
+      .link-icon .svg-fill { fill: var(--accent); opacity: 0.15; }
+
+      .linkbar-empty {
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+        padding: 10px;
+      }
+
+      @media (max-width: 600px) {
+        .linkbar { padding: 16px; }
+        .linkbar-items { gap: 8px; }
+        .link-pill {
+          width: calc(50% - 4px);
+          font-size: 13px;
+          padding: 8px 12px;
+          min-height: 44px;
+          gap: 8px;
+        }
+      }
+      @media (max-width: 360px) {
+        .link-pill { width: 100%; }
+      }
+      /* --- リンク集 改善ここまで --- */
+
+      /* 共通パーツ（変更なし） */
       h2 {
         margin: 0 0 18px;
         font-size: 20px;
@@ -114,7 +259,6 @@
         align-items: center;
       }
 
-      /* 重要: Grid内の要素が内容幅で突き抜けないようにする */
       .form-grid > * { min-width: 0; }
       .form-grid select,
       .form-grid input,
@@ -356,36 +500,16 @@
         border-radius: 10px;
         padding: 10px 12px;
       }
-
-      @media (max-width: 860px) {
-        body { padding: 14px; }
-
-        .page-header { margin-bottom: 12px; }
-        .header-utility-btn { width: 100%; }
-
-        .panel, .modal {
-          padding: 16px;
-          border-radius: 16px;
-        }
-
-        .form-grid {
-          grid-template-columns: 1fr;
-          gap: 8px;
-        }
-
-        label { margin-top: 6px; }
-
-        input, select, textarea { max-width: 100%; }
-        input[type="date"] { max-width: 100%; }
-
-        .actions { flex-direction: column; align-items: stretch; }
-        .actions button { width: 100%; }
-      }
     </style>
   </head>
   <body>
     <div class="page-header">
-      <button class="header-utility-btn" id="go_utilities_btn">ユーティリティ</button>
+      <div class="linkbar">
+        <div class="linkbar-title">リンク集</div>
+        <div id="linkbar_items" class="linkbar-items">
+          <div class="linkbar-empty">読み込み中...</div>
+        </div>
+      </div>
     </div>
 
     <div class="panel">
@@ -395,10 +519,7 @@
         <select id="company_name"></select>
 
         <label for="staff_name">2. スタッフ名</label>
-        <div>
-          <input id="staff_name" list="staff_candidates" />
-          <datalist id="staff_candidates"></datalist>
-        </div>
+        <input id="staff_name" type="text" />
 
         <label for="category">3. カテゴリ</label>
         <select id="category"></select>
@@ -453,8 +574,7 @@
           <select id="modal_company_name"></select>
 
           <label for="modal_staff_name">スタッフ名</label>
-          <input id="modal_staff_name" list="staff_candidates_modal" />
-          <datalist id="staff_candidates_modal"></datalist>
+          <input id="modal_staff_name" type="text" />
 
           <label for="modal_category">カテゴリ</label>
           <select id="modal_category"></select>
@@ -482,10 +602,72 @@
     </div>
 
     <script>
-      // 重要:
-      // ユーティリティは「外部URL」へ遷移させる。
-      // URLを差し替えるだけで運用できる。
-      const UTILITIES_URL = "https://script.google.com/macros/s/AKfycbzi3JvDeE9xDKLgs4_BnWMFJo59fg5bMQX3KPR5VFb40IlSGQl0Ke3GbORFIUCMtFyklg/exec";
+      // LINKシートから取得したリンクを描画する（デザイン刷新版）
+      function renderLinkBar(list) {
+        var wrap = document.getElementById('linkbar_items');
+        wrap.innerHTML = '';
+
+        var arr = Array.isArray(list) ? list : [];
+        if (arr.length === 0) {
+          var empty = document.createElement('div');
+          empty.className = 'linkbar-empty';
+          empty.textContent = 'リンクがありません';
+          wrap.appendChild(empty);
+          return;
+        }
+
+        // ラベルに応じて2トーン対応のSVGアイコンを返す
+        function getIconSvg(label) {
+          if (label.indexOf('フォーム') !== -1) {
+            return '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+                   '<path class="svg-fill" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>' +
+                   '<path class="svg-stroke" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>' +
+                   '<polyline class="svg-stroke" points="14 2 14 8 20 8"></polyline>' +
+                   '<line class="svg-stroke" x1="16" y1="13" x2="8" y2="13"></line>' +
+                   '<line class="svg-stroke" x1="16" y1="17" x2="8" y2="17"></line></svg>';
+          } else if (label.indexOf('契約') !== -1) {
+            return '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+                   '<path class="svg-fill" d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>' +
+                   '<path class="svg-stroke" d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>' +
+                   '<polyline class="svg-stroke" points="14 2 14 8 20 8"></polyline>' +
+                   '<circle class="svg-stroke" cx="10" cy="15" r="2"></circle>' +
+                   '<line class="svg-stroke" x1="12" y1="17" x2="15" y2="20"></line></svg>';
+          } else if (label.indexOf('アプリ') !== -1) {
+            return '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+                   '<rect class="svg-fill" x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>' +
+                   '<rect class="svg-stroke" x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>' +
+                   '<line class="svg-stroke" x1="12" y1="18" x2="12.01" y2="18"></line></svg>';
+          } else {
+            return '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+                   '<path class="svg-fill" d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>' +
+                   '<path class="svg-stroke" d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>' +
+                   '<path class="svg-stroke" d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>';
+          }
+        }
+
+        arr.forEach(function(item) {
+          var label = (item && item.label) ? String(item.label) : '';
+          var url = (item && item.url) ? String(item.url) : '';
+          if (!label || !url) return;
+
+          var a = document.createElement('a');
+          a.className = 'link-pill';
+          a.href = url;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+
+          var iconSpan = document.createElement('span');
+          iconSpan.className = 'link-icon';
+          iconSpan.innerHTML = getIconSvg(label);
+
+          var textSpan = document.createElement('span');
+          textSpan.textContent = label;
+
+          a.appendChild(iconSpan);
+          a.appendChild(textSpan);
+          wrap.appendChild(a);
+        });
+      }
 
       let state = {
         companies: [],
@@ -499,19 +681,39 @@
       function init() {
         google.script.run
           .withSuccessHandler(function(res) {
-            state.companies = res.companies || [];
-            state.categories = res.categories || [];
-            state.statuses = res.statuses || [];
-            state.actions = res.actions || [];
-            state.today_ymd = res.today_ymd || '';
+            try {
+              if (res && Array.isArray(res.links)) {
+                renderLinkBar(res.links);
+              } else {
+                loadLinks();
+              }
+            } catch (e) {
+              loadLinks();
+            }
+
+            state.companies = (res && res.companies) ? res.companies : [];
+            state.categories = (res && res.categories) ? res.categories : [];
+            state.statuses = (res && res.statuses) ? res.statuses : [];
+            state.actions = (res && res.actions) ? res.actions : [];
+            state.today_ymd = (res && res.today_ymd) ? res.today_ymd : '';
             renderFormOptions();
             resetForm();
-            loadStaffCandidates(document.getElementById('company_name').value, 'staff_candidates');
             renderActions();
             refreshContacts(false);
           })
           .withFailureHandler(showTableError)
           .initPage();
+      }
+
+      function loadLinks() {
+        google.script.run
+          .withSuccessHandler(function(list) {
+            renderLinkBar(list);
+          })
+          .withFailureHandler(function() {
+            renderLinkBar([]);
+          })
+          .getLinks();
       }
 
       function renderFormOptions() {
@@ -547,7 +749,6 @@
         document.getElementById('due_date').value = '';
         document.getElementById('status').value = '未対応';
         document.getElementById('note').value = '';
-        document.getElementById('staff_candidates').innerHTML = '';
         document.getElementById('form_error').textContent = '';
       }
 
@@ -613,24 +814,6 @@
       function truncate(text, maxLen) {
         const s = text || '';
         return s.length > maxLen ? s.slice(0, maxLen) + '...' : s;
-      }
-
-      function loadStaffCandidates(companyName, datalistId) {
-        const target = document.getElementById(datalistId);
-        target.innerHTML = '';
-        google.script.run
-          .withSuccessHandler(function(list) {
-            target.innerHTML = '';
-            (list || []).forEach(function(name) {
-              const op = document.createElement('option');
-              op.value = name;
-              target.appendChild(op);
-            });
-          })
-          .withFailureHandler(function() {
-            target.innerHTML = '';
-          })
-          .getStaffCandidates(companyName);
       }
 
       function refreshContacts(isModal) {
@@ -710,7 +893,6 @@
           'action_id: ' + action.action_id + ' / created_at: ' + action.created_at + ' / updated_at: ' + action.updated_at;
         document.getElementById('modal_error').textContent = '';
 
-        loadStaffCandidates(action.company_name, 'staff_candidates_modal');
         refreshContacts(true);
         document.getElementById('modal_backdrop').style.display = 'flex';
       }
@@ -746,19 +928,13 @@
         document.getElementById('table_error').textContent = e && e.message ? e.message : String(e);
       }
 
-      document.getElementById('go_utilities_btn').addEventListener('click', function() {
-        window.open(UTILITIES_URL, "_blank", "noopener,noreferrer");
-      });
-
       document.getElementById('create_btn').addEventListener('click', doCreate);
-      document.getElementById('company_name').addEventListener('change', function(e) {
-        loadStaffCandidates(e.target.value, 'staff_candidates');
+      document.getElementById('company_name').addEventListener('change', function() {
         refreshContacts(false);
       });
       document.getElementById('category').addEventListener('change', function() { refreshContacts(false); });
 
-      document.getElementById('modal_company_name').addEventListener('change', function(e) {
-        loadStaffCandidates(e.target.value, 'staff_candidates_modal');
+      document.getElementById('modal_company_name').addEventListener('change', function() {
         refreshContacts(true);
       });
       document.getElementById('modal_category').addEventListener('change', function() { refreshContacts(true); });

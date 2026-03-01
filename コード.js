@@ -1,9 +1,8 @@
 const APP_SPREADSHEET_ID = '1WaV0wT57jeOOqb8TaXlzE-KoE2FXWGq6d4UKlyxmlgg';
-const EXTERNAL_STAFF_SS_ID = '1X0sdAY32MFk98mwqwPMFOpdI5-2KSfjSU71NBDOoyUo';
-const EXTERNAL_STAFF_SHEET_NAME = '決定';
 const TZ = 'Asia/Tokyo';
 const CATEGORIES = ['契約・請求', '営業・トラブル', 'その他'];
 const STATUSES = ['未対応', '対応中', '完了'];
+const LINK_SHEET_NAME = 'LINK';
 
 function doGet(e) {
   const page = e && e.parameter ? e.parameter.page : '';
@@ -16,9 +15,59 @@ function doGet(e) {
   return HtmlService.createHtmlOutputFromFile('index');
 }
 
+function getLinks() {
+  try {
+    var ss = SpreadsheetApp.openById(APP_SPREADSHEET_ID);
+    var sheet = ss.getSheetByName(LINK_SHEET_NAME);
+    if (!sheet) return [];
+
+    var lastRow = sheet.getLastRow();
+    var lastCol = sheet.getLastColumn();
+    if (lastRow <= 1 || lastCol <= 1) return [];
+
+    var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    var map = {};
+    for (var i = 0; i < header.length; i++) {
+      var h = String(header[i] || '').trim();
+      if (h) map[h] = i;
+    }
+
+    if (map.label == null || map.url == null || map.order == null || map.enabled == null) {
+      return [];
+    }
+
+    var values = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+    var rows = [];
+
+    for (var r = 0; r < values.length; r++) {
+      var row = values[r];
+      if (row[map.enabled] !== true) continue;
+
+      var label = String(row[map.label] || '').trim();
+      var url = String(row[map.url] || '').trim();
+      if (!label || !url) continue;
+
+      var ord = Number(row[map.order]);
+      if (!isFinite(ord)) ord = 999999;
+
+      rows.push({ label: label, url: url, order: ord });
+    }
+
+    rows.sort(function(a, b) {
+      if (a.order !== b.order) return a.order - b.order;
+      return String(a.label).localeCompare(String(b.label));
+    });
+
+    return rows.map(function(x) { return { label: x.label, url: x.url }; });
+  } catch (e) {
+    return [];
+  }
+}
+
 function initPage() {
   assertSheetsAndColumns_();
   return {
+    links: getLinks(),
     companies: loadCompanies_(),
     categories: CATEGORIES.slice(),
     statuses: STATUSES.slice(),
@@ -131,7 +180,6 @@ function updateAction(actionId, patch) {
 
   const now = nowJst_();
   const currentStatus = String(row[colMap.status - 1] || '').trim();
-  let nextStatus = currentStatus;
 
   if (Object.prototype.hasOwnProperty.call(patch, 'company_name')) {
     sheet.getRange(rowIndex, colMap.company_name).setValue(String(patch.company_name || '').trim());
@@ -154,7 +202,7 @@ function updateAction(actionId, patch) {
     sheet.getRange(rowIndex, colMap.note).setValue(note);
   }
   if (Object.prototype.hasOwnProperty.call(patch, 'status')) {
-    nextStatus = String(patch.status || '').trim();
+    const nextStatus = String(patch.status || '').trim();
     if (STATUSES.indexOf(nextStatus) === -1) throw new Error('INVALID_STATUS: ' + nextStatus);
     sheet.getRange(rowIndex, colMap.status).setValue(nextStatus);
 
@@ -185,32 +233,6 @@ function deleteAction(actionId) {
   sheet.getRange(rowIndex, colMap.deleted_at).setValue(now);
   sheet.getRange(rowIndex, colMap.updated_at).setValue(now);
   return listActions();
-}
-
-function getStaffCandidates(companyName) {
-  assertSheetsAndColumns_();
-  const cn = String(companyName || '').trim();
-  if (!cn) return [];
-
-  try {
-    const ss = SpreadsheetApp.openById(EXTERNAL_STAFF_SS_ID);
-    const sheet = ss.getSheetByName(EXTERNAL_STAFF_SHEET_NAME);
-    if (!sheet) return [];
-
-    const lastRow = sheet.getLastRow();
-    if (lastRow <= 1) return [];
-
-    const values = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
-    const set = {};
-    for (let i = 0; i < values.length; i++) {
-      const company = String(values[i][4] || '').trim();
-      const staff = String(values[i][2] || '').trim();
-      if (company === cn && staff) set[staff] = true;
-    }
-    return Object.keys(set).sort();
-  } catch (e) {
-    return [];
-  }
 }
 
 function getCompanyContacts(companyName) {
@@ -358,5 +380,4 @@ function validateHeaders_(sheet, sheetName, requiredColumns) {
       throw new Error('COLUMNS_MISSING: ' + sheetName + ': ' + col);
     }
   }
-  
 }
