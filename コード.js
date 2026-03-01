@@ -6,6 +6,13 @@ const CATEGORIES = ['契約・請求', '営業・トラブル', 'その他'];
 const STATUSES = ['未対応', '対応中', '完了'];
 
 function doGet(e) {
+  const page = e && e.parameter ? e.parameter.page : '';
+  if (page === 'utilities') {
+    return HtmlService.createHtmlOutputFromFile('utilities');
+  }
+  if (page === 'nameFormatter') {
+    return HtmlService.createHtmlOutputFromFile('nameFormatter');
+  }
   return HtmlService.createHtmlOutputFromFile('index');
 }
 
@@ -351,6 +358,5 @@ function validateHeaders_(sheet, sheetName, requiredColumns) {
       throw new Error('COLUMNS_MISSING: ' + sheetName + ': ' + col);
     }
   }
+  
 }
-
-

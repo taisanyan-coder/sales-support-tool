@@ -46,6 +46,30 @@
         line-height: 1.6;
       }
 
+      .page-header {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 16px;
+      }
+
+      .header-utility-btn {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: var(--radius-md);
+        min-height: 40px;
+        padding: 0 14px;
+        color: #475569;
+        font-weight: 700;
+        cursor: pointer;
+        transition: var(--transition);
+      }
+
+      .header-utility-btn:hover {
+        background: var(--primary-light);
+        border-color: rgba(0, 164, 228, 0.55);
+        color: var(--primary-dark);
+      }
+
       h2 {
         margin: 0 0 18px;
         font-size: 20px;
@@ -89,6 +113,13 @@
         gap: 14px 18px;
         align-items: center;
       }
+
+      /* 重要: Grid内の要素が内容幅で突き抜けないようにする */
+      .form-grid > * { min-width: 0; }
+      .form-grid select,
+      .form-grid input,
+      .form-grid textarea,
+      .form-grid div { min-width: 0; }
 
       label {
         font-size: 14px;
@@ -329,6 +360,9 @@
       @media (max-width: 860px) {
         body { padding: 14px; }
 
+        .page-header { margin-bottom: 12px; }
+        .header-utility-btn { width: 100%; }
+
         .panel, .modal {
           padding: 16px;
           border-radius: 16px;
@@ -350,6 +384,10 @@
     </style>
   </head>
   <body>
+    <div class="page-header">
+      <button class="header-utility-btn" id="go_utilities_btn">ユーティリティ</button>
+    </div>
+
     <div class="panel">
       <h2>新規登録</h2>
       <div class="form-grid">
@@ -444,6 +482,11 @@
     </div>
 
     <script>
+      // 重要:
+      // ユーティリティは「外部URL」へ遷移させる。
+      // URLを差し替えるだけで運用できる。
+      const UTILITIES_URL = "https://script.google.com/macros/s/AKfycbzi3JvDeE9xDKLgs4_BnWMFJo59fg5bMQX3KPR5VFb40IlSGQl0Ke3GbORFIUCMtFyklg/exec";
+
       let state = {
         companies: [],
         categories: [],
@@ -702,6 +745,10 @@
       function showTableError(e) {
         document.getElementById('table_error').textContent = e && e.message ? e.message : String(e);
       }
+
+      document.getElementById('go_utilities_btn').addEventListener('click', function() {
+        window.open(UTILITIES_URL, "_blank", "noopener,noreferrer");
+      });
 
       document.getElementById('create_btn').addEventListener('click', doCreate);
       document.getElementById('company_name').addEventListener('change', function(e) {
